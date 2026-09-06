@@ -272,6 +272,30 @@ app propia leeria la posicion igual de marcada. Lo unico que aportaria es
 diagnostico: leer `CLLocation.sourceInformation.isSimulatedBySoftware` y medir lo
 que aqui esta deducido por descarte. No abre ninguna via nueva.
 
-**Conclusion.** Con iPhone sin jailbreak y app sin modificar no hay salida por
-esta via. Lo unico que quedaria es portarlo a Android con root y ocultacion de
-mock location, que es otro proyecto.
+**Descartado: `com.apple.coredevice.locationservice`.** Enumerando los 60
+servicios que publica el movil por RSD, es el unico canal de ubicacion aparte del
+de Instruments. Responde bien, pero devuelve los escenarios de siempre:
+
+```
+{"scenarios": [{"name": "City Run"}, {"name": "City Bicycle Ride"},
+               {"name": "Apple"}, {"name": "Freeway Drive"}]}
+```
+
+Son los presets de Debug > Simulate Location de Xcode. Es el mismo feature con
+otro transporte, CoreDevice en vez de DTX, asi que la posicion sale marcada
+igual. `devicectl` de Xcode ni siquiera expone el subcomando. No hay un tercer
+canal de ubicacion en iOS.
+
+**Conclusion.** iOS cerrado. Los dos unicos canales de ubicacion del sistema son
+el mismo feature de Xcode, y ese feature va marcado. Lo que queda esta todo fuera
+de lo que hace este repo:
+
+- Jailbreak: no hay para el iPhone XR con iOS 18.6.2. El XR es A12 y checkm8
+  llega hasta A11. TrollStore pide iOS 17.0 o anterior.
+- Binario del juego modificado o metido en un contenedor con hooks: rompe la
+  premisa de "sin app modificada" y es terreno de copyright.
+- Emitir señal GPS falsa con un SDR: transmitir en las bandas GNSS es ilegal y
+  afecta a cualquiera que este cerca. Descartado de plano.
+
+La unica via viva es portarlo a Android con root y ocultacion de mock location,
+que es otro proyecto y donde la deteccion tambien pelea.
