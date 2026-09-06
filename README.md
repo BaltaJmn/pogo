@@ -23,10 +23,15 @@ Pokemon GO **funciona con el emulador de Android**: arranca, carga el mapa, anda
 con el joystick, y el avatar y la camara siguen al personaje en vivo. Ver
 [Uso diario](#uso-diario), opcion `--android`.
 
-Con una condicion: el emulador tiene que arrancarse con **`-gpu swangle`**. Con
-el modo de GPU por defecto de Android Studio el juego funciona y cuenta
-kilometros, pero el avatar no se dibuja y la camara no sigue. El comando esta en
-[Uso diario](#uso-diario) y el porque en
+Con dos condiciones. La primera: el emulador tiene que arrancarse con
+**`-gpu swangle`**. Con el modo de GPU por defecto de Android Studio el juego
+funciona y cuenta kilometros, pero el avatar no se dibuja y la camara no sigue.
+
+La segunda: hay que apuntar el ICD de Vulkan de ANGLE a **kosmickrisp**, si no
+el juego va a 8 FPS. Con el parche va a 30, que es el tope del propio juego. Es
+una linea, esta en [Instalacion](#instalacion-una-sola-vez).
+
+Los comandos estan en [Uso diario](#uso-diario) y el porque en
 [Registro de intentos](#registro-de-intentos).
 
 En iPhone no hay nada que hacer, y el resto de esta seccion explica por que.
@@ -91,6 +96,20 @@ simulacion, pero no para Pokemon GO:
    Studio: hace falta pasarle el modo de GPU. El comando esta en
    [Uso diario](#uso-diario).
 3. Dentro del emulador, instala Pokemon GO desde la Play Store.
+4. Apunta el ICD de Vulkan de ANGLE a kosmickrisp, el driver Vulkan sobre Metal
+   que trae el propio SDK. Sin esto el juego va a 8 FPS, con esto a 30:
+
+   ```sh
+   G=~/Library/Android/sdk/emulator/lib64/gles_angle
+   cp $G/vk_swiftshader_icd.json $G/vk_swiftshader_icd.json.orig
+   printf '{"file_format_version": "1.0.0", "ICD": {"library_path": "%s/Library/Android/sdk/emulator/lib64/vulkan/libvulkan_kosmickrisp.dylib", "api_version": "1.3.0"}}\n' "$HOME" > $G/vk_swiftshader_icd.json
+   ```
+
+   Para deshacerlo: `cp $G/vk_swiftshader_icd.json.orig $G/vk_swiftshader_icd.json`.
+
+   **Este fichero vive dentro del SDK, no en el repo.** Cada vez que Android
+   Studio actualice el emulador hay que volver a aplicarlo. Si un dia el juego
+   vuelve a ir a tirones, mira aqui primero.
 
 `spoof.py` busca `adb` en el `PATH` y, si no esta, en
 `~/Library/Android/sdk/platform-tools/adb`.
@@ -150,6 +169,12 @@ adb shell getprop ro.opengles.version
 ```
 
 `196609` es ES 3.1, correcto. `196608` es ES 3.0, mal, relanza el emulador.
+
+`-cores` no hace falta tocarlo. El renderizado ocurre en el host, no en el
+guest, asi que subir los cores del emulador no da FPS: mide igual con 4, 6 y 8.
+Ademas el maximo real son 8, con 10 el emulador ni arranca
+(`Number of SMP CPUs requested (10) exceeds max CPUs supported by machine
+'mach-virt' (8)`).
 
 Con el emulador ya arrancado:
 
@@ -786,3 +811,91 @@ le inyecto ubicacion simulada unos segundos antes de limpiarla con
 desconexion, pero conviene recordarlo: `run.sh` pasa el UDID desde `.env`, los
 scripts sueltos no. **Cualquier script de diagnostico contra un dispositivo Apple
 tiene que pasar `serial=` explicito.**
+
+### 2026-09-06, tarde 8: de 8 a 30 FPS sin perder el avatar
+
+`-gpu swangle` dejaba el juego jugable pero a **7.8 FPS**. La causa: swangle es
+ANGLE de host traduciendo GLES a Vulkan, y el Vulkan que usaba era SwiftShader,
+que es un rasterizador **por software**. La GPU del Mac no pintaba nada.
+
+El nudo era este:
+
+| Config | GLES | Backend | Avatar | FPS |
+|---|---|---|---|---|
+| `-gpu swangle` | 3.1 | SwiftShader (CPU) | si | 7.8 |
+| `-gpu host` | 3.0 | Apple M2 Pro | **no** | 30.0 |
+| `-gpu host` + `GuestAngle` | 3.1 | Apple M2 Pro | Unity no arranca | - |
+
+El avatar necesita ES 3.1. `-gpu host` en macOS se queda en ES 3.0 porque el
+OpenGL de macOS tope en 4.1 y ES 3.1 pide GL 4.3. O sea: velocidad sin avatar, o
+avatar sin velocidad.
+
+**Lo que no funciono:**
+
+- **Bajar resolucion.** De 1080x2400 a 720x1600 sube de 7.9 a ~9-11 FPS. De ahi
+  a 540x1200 no gana nada mas. No es fill rate.
+- **Subir `-cores`.** 4 cores da 7.9, 6 da 9.0, 8 da 7.8. Todo ruido de la misma
+  medida. SwiftShader corre en el proceso del emulador, en el host, asi que los
+  cores del guest no le tocan. Y con `-cores 10` el emulador ni arranca:
+  `Number of SMP CPUs requested (10) exceeds max CPUs supported by machine
+  'mach-virt' (8)`. El tope de QEMU son 8, no los 6 del desplegable de Android
+  Studio.
+- **`-gpu angle`.** No es un modo valido. El emulador lo rechaza y cae a
+  lavapipe, que tambien es software: ES 3.0 y `Selecting Vulkan device: llvmpipe`.
+  Los modos validos, sacados del binario, son
+  `'auto', 'host', 'lavapipe', 'swiftshader' o 'swangle'`.
+- **`GuestAngle` sobre hardware.** La hipotesis era que Unity rechazaba ANGLE en
+  guest porque debajo estaba MoltenVK, que es Vulkan incompleto (el propio
+  binario del emulador lleva la cadena "MoltenVK enabled but necessary device
+  extensions are not supported"). Se repitio con kosmickrisp, que si es Vulkan
+  1.3 completo. Arranca bien:
+
+  ```
+  ro.opengles.version = 196609
+  Selecting Vulkan device: Apple M2 Pro, Version: 1.3.348
+  ANGLE : Version (2.1 ...), Renderer (Vulkan 1.3.0 (Goldfish GFXStream (Apple M2 Pro)))
+  ```
+
+  Y aun asi Unity muere igual con "Unable to initialize the Unity Engine
+  Graphics API". **Hipotesis descartada:** no es el driver de debajo, es que
+  Unity rechaza ANGLE en guest y punto.
+
+**Lo que si funciono.** Si Unity acepta ANGLE de host (swangle) y lo unico malo
+de swangle era su backend de software, la jugada es cambiarle el backend. El SDK
+del emulador ya trae kosmickrisp, el driver Vulkan sobre Metal de Mesa, en
+`lib64/vulkan/libvulkan_kosmickrisp.dylib`. ANGLE carga su ICD desde
+`lib64/gles_angle/vk_swiftshader_icd.json`, asi que basta reescribir ese fichero
+para que apunte a kosmickrisp. El comando esta en
+[Instalacion](#instalacion-una-sola-vez).
+
+Resultado, mismo `-gpu swangle -no-snapshot-load` de siempre, a 720x1600:
+
+```
+30.0 FPS   (63 frames, 33.4 ms/frame)
+30.0 FPS   (63 frames, 33.3 ms/frame)
+30.0 FPS   (63 frames, 33.3 ms/frame)
+ro.opengles.version = 196609
+```
+
+Los 30.0 clavados son el tope del propio juego, no del emulador: no hay mas que
+sacar. **3.8x**, con ES 3.1, avatar visible, camara siguiendo, y el joystick
+sincronizado (`/pos` 37.882787,-4.795906 contra `gps 37.882787,-4.795875`, los 3
+metros son el jitter que mete el servidor).
+
+Un intento anterior habia probado esto mismo apuntando el ICD a MoltenVK y
+reventaba el emulador al arrancar. La diferencia es que kosmickrisp expone el
+Vulkan 1.3 completo que ANGLE necesita y MoltenVK no.
+
+**Como se mide.** `dumpsys SurfaceFlinger --latency` sobre la capa BLAST de
+Unity:
+
+```sh
+ADB=~/Library/Android/sdk/platform-tools/adb
+RAW=$($ADB shell dumpsys SurfaceFlinger --list | tr -d '\r' \
+      | grep "SurfaceView\[com.nianticlabs" | grep BLAST | head -1)
+NAME=$(echo "$RAW" | sed 's/^RequestedLayerState{//; s/ parentId=[0-9]*}$//')
+$ADB shell "dumpsys SurfaceFlinger --latency '$NAME'"
+```
+
+Ojo: si hay un modal encima el juego deja de repintar y no salen muestras. Hay
+que cerrarlo antes de medir.
