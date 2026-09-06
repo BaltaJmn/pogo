@@ -199,6 +199,33 @@
 
   :focus-visible { outline: 2px solid var(--magenta); outline-offset: 2px; }
 
+  /* --- confirmacion de salto --- */
+  dialog#ask {
+    padding: 0; border: 1px solid var(--rule); border-radius: 4px;
+    background: var(--panel); color: var(--ink);
+    width: 330px; max-width: calc(100% - 32px);
+    box-shadow: 0 10px 44px rgba(22, 35, 58, .32);
+  }
+  dialog#ask::backdrop { background: rgba(22, 35, 58, .45); }
+  .ask-in { padding: 16px 18px 0; }
+  .ask-in h3 {
+    margin: 0 0 9px; font: 700 13px/1.2 var(--cond);
+    letter-spacing: .14em; text-transform: uppercase;
+  }
+  .ask-d { font: 400 12px/1.5 var(--mono); color: var(--ink-2); }
+  .ask-d b { color: var(--ink); font-weight: 500; }
+  .ask-cool {
+    display: flex; align-items: center; gap: 9px;
+    margin-top: 11px; padding: 7px 10px; border-radius: 3px;
+    background: var(--magenta); color: #fff;
+  }
+  .ask-cool b { font: 500 16px/1 var(--mono); }
+  .ask-cool i { font: 400 10.5px/1.3 var(--sans); font-style: normal; opacity: .92; }
+  .ask-free { margin-top: 11px; font-size: 11.5px; color: var(--ink-3); }
+  .ask-b { display: flex; gap: 7px; padding: 14px 18px 16px; }
+  button.danger { background: var(--magenta); border-color: var(--magenta); color: #fff; }
+  button.danger:hover { background: #a51360; border-color: #a51360; }
+
   /* --- control de vista, sobre el mapa --- */
   .view {
     position: absolute; top: 12px; right: 12px; z-index: 1000; display: flex;
@@ -309,6 +336,17 @@
     <button id="stopSim" class="link" style="margin-top:8px">Devolver GPS real</button>
   </div>
 </div>
+
+<dialog id="ask">
+  <div class="ask-in">
+    <h3 id="askTitle">Saltar a este punto?</h3>
+    <div class="ask-d" id="askBody"></div>
+  </div>
+  <div class="ask-b">
+    <button id="askNo" class="ghost" autofocus>Cancelar</button>
+    <button id="askYes" class="ghost danger">Saltar</button>
+  </div>
+</dialog>
 
 <script>
 const el = (id) => document.getElementById(id);
@@ -502,7 +540,7 @@ function fromKeys() {
 }
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
-  if (e.target.tagName === 'INPUT') return;
+  if (e.target.tagName === 'INPUT' || el('ask').open) return;
   if (k === ' ' && route.length > 1) { e.preventDefault(); el('walk').click(); return; }
   if (!KEYMAP[k]) return;
   e.preventDefault(); keys.add(k); fromKeys();
@@ -574,9 +612,36 @@ function walkTo(p) {
   updateNav();
 }
 
-// Saltar es lo que dispara cooldown. Avisar de eso vale mas que cualquier
-// otra cosa que pueda poner en esta pantalla.
-function jumpTo(p) {
+// Saltar es lo unico aqui que se paga caro, asi que se confirma siempre. El
+// guard vive en jumpTo y no en cada boton: asi cubre tambien lo que venga luego.
+async function jumpTo(p, name) {
+  if (pos && !(await askJump(p, name))) { setStatus('salto cancelado'); return; }
+  doJump(p);
+}
+
+// Sin posicion previa no hay salto que confirmar: no vienes de ningun sitio, no
+// hay distancia y no hay cooldown. Es colocarse, no teletransportarse.
+function askJump(p, name) {
+  const m = metersBetween(pos, p);
+  const sec = coolFor(m / 1000);
+  el('askTitle').textContent = name ? 'Saltar a ' + name + '?' : 'Saltar a este punto?';
+  el('askBody').innerHTML =
+    'A <b>' + km(m) + '</b> de donde estas.<br>' + p.lat.toFixed(6) + ', ' + p.lon.toFixed(6)
+    + (sec
+       ? '<div class="ask-cool"><b>' + clock(sec) + '</b>'
+         + '<i>de cooldown. Ni capturar, ni girar paradas, ni abrir regalos.</i></div>'
+       : '<div class="ask-free">Salto corto, no genera cooldown.</div>');
+  const dlg = el('ask');
+  dlg.showModal();
+  return new Promise((done) => {
+    const end = (ok) => { dlg.close(); done(ok); };
+    el('askYes').onclick = () => end(true);
+    el('askNo').onclick = () => end(false);
+    dlg.oncancel = () => done(false);        // Escape
+  });
+}
+
+function doJump(p) {
   const jump = pos ? metersBetween(pos, p) : 0;
   clearNav();
   walking = false; setWalking(false); setVec(0, 0);
@@ -703,7 +768,7 @@ function renderPlaces() {
       + '<button class="del" title="Borrar">x</button>';
     row.querySelector('.name').onclick = () => map.setView([p.lat, p.lon], Math.max(map.getZoom(), 16));
     row.querySelector('[data-a=walk]').onclick = () => walkTo(p);
-    row.querySelector('[data-a=jump]').onclick = () => jumpTo(p);
+    row.querySelector('[data-a=jump]').onclick = () => jumpTo(p, p.name);
     row.querySelector('.del').onclick = () => { places.splice(i, 1); renderPlaces(); save(); };
   });
 }
@@ -828,7 +893,7 @@ el('homeWalk').onclick = () => {
 };
 el('homeJump').onclick = () => {
   if (!home) { setStatus('no hay casa fijada', true); return; }
-  jumpTo(home);
+  jumpTo(home, 'casa');
 };
 
 // --- emulador ----------------------------------------------------------

@@ -267,7 +267,7 @@ Para usar otro AVD: `POGO_AVD=MiOtroAvd ./emulator.sh start`, o ponlo en `.env`.
 | Guardar un lugar | Click en el mapa, "Guardar", y le pones nombre |
 | Guardar donde estas | Boton "Guardar esta posicion" |
 | Ir andando a un sitio | "Andar", en el globo del mapa o en la lista de lugares |
-| Saltar a un sitio | "Saltar", en el globo del mapa o en la lista |
+| Saltar a un sitio | "Saltar", en el globo del mapa o en la lista. Pide confirmacion |
 | Fijar casa | "Fijar casa en esta posicion", con la posicion puesta en tu portal |
 | Volver a casa andando | Boton "Andar a casa" |
 | Volver a casa de golpe | Boton "Saltar a casa", tiene cooldown |
@@ -332,7 +332,8 @@ Cada lugar de la lista tiene dos botones, y la diferencia importa:
   para al llegar. Por dentro es una ruta de dos puntos con "Parar" al final, o
   sea que reemplaza la ruta que tuvieras dibujada. Mientras vas, debajo de las
   coordenadas te dice cuanto falta y cuanto tarda.
-- **Saltar**: teletransporte. Instantaneo, pero **dispara cooldown**.
+- **Saltar**: teletransporte. Instantaneo, pero **dispara cooldown**, asi que
+  pide confirmacion antes (ver [Confirmacion de saltos](#confirmacion-de-saltos)).
 
 Click en el nombre centra el mapa ahi sin mover nada.
 
@@ -360,7 +361,7 @@ Hay dos formas de volver:
 - **"Andar a casa"**: te lleva caminando, como cualquier otro lugar. Sin
   cooldown, porque andar no dispara nada. Es lo que quieres casi siempre.
 - **"Saltar a casa"**: teletransporte. Util si estabas lejos de verdad, pero
-  **dispara cooldown** como cualquier salto.
+  **dispara cooldown** como cualquier salto, y por eso pide confirmacion.
 
 ## Reglas de Pokemon GO
 
@@ -393,11 +394,30 @@ Moverse y mirar el mapa no cuenta. Solo cuentan las acciones.
 
 El joystick a velocidad de andar no dispara cooldown. Saltar de ciudad si.
 
+**Ningun salto ocurre sin que lo confirmes**, ver
+[Confirmacion de saltos](#confirmacion-de-saltos).
+
 **La web lleva la cuenta sola.** Cada vez que saltas (click en el mapa y "Saltar
 aqui", "Saltar" en un lugar, o "Ir a casa") mide el salto, busca en esa tabla y
 saca un contador rojo con el tiempo que queda. Sobrevive a recargar la pestaña,
 porque el cooldown no lo lleva el juego, lo llevas tu. Andando no aparece: andar
 no dispara nada.
+
+### Confirmacion de saltos
+
+Cualquier cosa que te teletransporte ("Saltar" en el globo del mapa, "Saltar" en
+un lugar guardado, "Saltar a casa") abre antes un dialogo que te dice a que
+distancia esta y **cuanto cooldown te va a costar exactamente**. Nada se manda
+hasta que le das a "Saltar" ahi. Escape o "Cancelar" y no ha pasado nada.
+
+Si el salto es de menos de 1 km, el dialogo lo dice: "Salto corto, no genera
+cooldown". Sale igual, para que la distincion la veas tu y no tengas que
+acordarte de la tabla.
+
+Andar no pregunta nada: no cuesta cooldown, asi que no hay nada que confirmar.
+
+La comprobacion vive en la funcion que hace el salto, no en cada boton, de modo
+que cualquier via que se anada mas adelante queda cubierta sola.
 
 ### Higiene
 
