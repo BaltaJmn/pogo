@@ -274,6 +274,16 @@
   </div>
 
   <div class="sec">
+    <div class="lab">Rutas guardadas</div>
+    <div id="routes"></div>
+    <div class="row" id="saveRouteRow"><button id="saveRoute" class="ghost">Guardar ruta actual</button></div>
+    <form class="pop-s hide" id="saveRouteForm">
+      <input placeholder="Nombre de la ruta" maxlength="40" aria-label="Nombre de la ruta">
+      <button class="ghost" style="flex:0 0 auto">Ok</button>
+    </form>
+  </div>
+
+  <div class="sec">
     <div class="lab">Lugares</div>
     <div id="places"></div>
     <div class="row"><button id="savePos" class="ghost">Guardar esta posicion</button></div>
@@ -318,6 +328,7 @@ let walking = false;
 let home = null;                        // punto de partida real, solo en localStorage
 let follow = false;                     // si el mapa persigue al marcador
 let places = [];                        // lugares guardados, solo en localStorage
+let routes = [];                        // rutas guardadas, solo en localStorage
 let navTarget = null;                   // hacia donde vamos andando, si vamos
 let routeIdx = 0;                       // por que punto de la ruta va el servidor
 let centered = false;                   // si ya encuadramos el mapa alguna vez
@@ -611,6 +622,67 @@ function tickCool() {
 }
 setInterval(tickCool, 1000);
 
+// --- rutas guardadas ---------------------------------------------------
+const routeMeters = (pts) => pts.reduce((t, p, i) =>
+  i ? t + metersBetween(pts[i - 1], p) : 0, 0);
+
+function renderRoutes() {
+  const box = el('routes');
+  if (!routes.length) {
+    box.innerHTML = '<div class="empty">Sin rutas. Dibuja una en el mapa y guardala aqui.</div>';
+    return;
+  }
+  box.innerHTML = '';
+  routes.forEach((r, i) => {
+    const row = L.DomUtil.create('div', 'place', box);
+    row.innerHTML = '<button class="name">' + esc(r.name)
+      + '<em>' + km(routeMeters(r.points)) + '</em></button>'
+      + '<button class="go" data-a="load">Cargar</button>'
+      + '<button class="del" title="Borrar">x</button>';
+    // El nombre solo la enseña. Cargar es lo que pisa la ruta que tengas.
+    row.querySelector('.name').onclick = () =>
+      map.fitBounds(r.points.map((p) => [p.lat, p.lon]), { padding: [40, 40] });
+    row.querySelector('[data-a=load]').onclick = () => loadRoute(r);
+    row.querySelector('.del').onclick = () => { routes.splice(i, 1); renderRoutes(); save(); };
+  });
+}
+
+function loadRoute(r) {
+  route = r.points.map((p) => ({ lat: p.lat, lon: p.lon }));
+  walking = false; routeIdx = 0; clearNav();
+  setWalking(false); drawRoute();
+  map.fitBounds(route.map((p) => [p.lat, p.lon]), { padding: [40, 40] });
+  // Mandar la ruta pone `idx` a 0 en el servidor, que es lo que queremos aqui.
+  send({ route, walking: false });
+  save();
+  setStatus('cargada: ' + r.name);
+}
+
+el('saveRoute').onclick = () => {
+  if (route.length < 2) { setStatus('dibuja 2 puntos o mas antes', true); return; }
+  el('saveRouteRow').classList.add('hide');
+  el('saveRouteForm').classList.remove('hide');
+  el('saveRouteForm').querySelector('input').focus();
+};
+(function saveRouteForm() {
+  const form = el('saveRouteForm'), input = form.querySelector('input');
+  const close = () => {
+    form.classList.add('hide'); el('saveRouteRow').classList.remove('hide'); input.value = '';
+  };
+  const store = () => {
+    const name = input.value.trim();
+    if (!name) return;
+    routes.push({ name, points: route.map((p) => ({ lat: p.lat, lon: p.lon })) });
+    renderRoutes(); save(); close();
+    setStatus('guardada: ' + name);
+  };
+  form.onsubmit = (ev) => { ev.preventDefault(); store(); };
+  input.onkeydown = (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); store(); }
+    if (ev.key === 'Escape') { ev.preventDefault(); close(); }
+  };
+})();
+
 // --- lugares -----------------------------------------------------------
 function renderPlaces() {
   const box = el('places');
@@ -792,7 +864,7 @@ setInterval(emuPoll, 3000);
 
 // --- persistencia ------------------------------------------------------
 const save = () => localStorage.setItem('joystick',
-  JSON.stringify({ route, kmh: el('kmh').value, pos, home, follow, places, coolUntil }));
+  JSON.stringify({ route, kmh: el('kmh').value, pos, home, follow, places, routes, coolUntil }));
 (function load() {
   try {
     const s = JSON.parse(localStorage.getItem('joystick') || '{}');
@@ -802,9 +874,11 @@ const save = () => localStorage.setItem('joystick',
     el('follow').classList.toggle('on', follow);
     home = s.home || null;
     places = s.places || [];
+    routes = s.routes || [];
     coolUntil = s.coolUntil || 0;       // el cooldown sobrevive a recargar la pestaña
     drawRoute();
     renderPlaces();
+    renderRoutes();
     showHome();
     tickCool();
     document.querySelector('input[name=endmode]:checked').parentElement.classList.add('on');
@@ -821,6 +895,6 @@ const save = () => localStorage.setItem('joystick',
       centered = true;
     }
     send(patch);
-  } catch (e) { drawRoute(); renderPlaces(); showHome(); }
+  } catch (e) { drawRoute(); renderPlaces(); renderRoutes(); showHome(); }
 })();
 </script>

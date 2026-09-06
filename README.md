@@ -259,6 +259,8 @@ Para usar otro AVD: `POGO_AVD=MiOtroAvd ./emulator.sh start`, o ponlo en `.env`.
 | Velocidad | Slider, o los presets Andar / Rapido / Bici |
 | Crear ruta | Marcar "Modo ruta" y hacer click en cada punto |
 | Recorrer ruta | Boton "Recorrer" |
+| Guardar la ruta dibujada | Boton "Guardar ruta actual", y le pones nombre |
+| Recuperar una ruta guardada | Boton "Cargar" en la lista de rutas |
 | Pausar a mitad de ruta | Boton "Pausar", o la tecla `espacio` |
 | Seguir donde lo dejaste | Boton "Reanudar", o `espacio` otra vez |
 | Fin de ruta | Bucle, Ida y vuelta, o Parar |
@@ -292,11 +294,30 @@ La rosa de los vientos marca el rumbo, no es solo un mando. Andando a mano lo
 saca del joystick; recorriendo una ruta, de la diferencia entre posiciones, que
 es cuando de verdad te interesa mirarla.
 
-La ruta, la velocidad y los lugares se guardan en el navegador. Siguen ahi al
-reabrir.
+La ruta actual, la velocidad, los lugares y las rutas guardadas viven en el
+navegador. Siguen ahi al reabrir.
 
 Manda una coordenada por segundo, como un GPS real, con +-3 metros de ruido para
 que la traza no salga en linea geometrica perfecta.
+
+## Rutas guardadas
+
+Las rutas que dibujas se pueden guardar con nombre y recuperar despues, para no
+tener que volver a marcar los puntos cada vez.
+
+Dibuja la ruta como siempre (marca "Marcar puntos en el mapa" y ve haciendo
+click), y pulsa **"Guardar ruta actual"**. Pide un nombre y ya esta.
+
+Cada ruta de la lista muestra lo que mide y trae dos cosas:
+
+- **Click en el nombre**: encuadra el mapa en esa ruta para que la veas, sin
+  tocar la que tengas puesta.
+- **Cargar**: la pone como ruta activa. Ojo, **reemplaza la que tuvieras
+  dibujada**, asi que guardala antes si te interesa. No empieza a andar sola:
+  la carga y ya le das a "Recorrer" cuando quieras.
+
+Cargar una ruta la deja siempre en el punto 1, aunque vinieras de una pausa a
+mitad de otra.
 
 ## Lugares
 
@@ -315,8 +336,8 @@ Cada lugar de la lista tiene dos botones, y la diferencia importa:
 
 Click en el nombre centra el mapa ahi sin mover nada.
 
-Los lugares viven en el `localStorage` del navegador, igual que casa. **No se
-guardan en el repo ni se mandan a ningun sitio.**
+Los lugares viven en el `localStorage` del navegador, igual que casa y que las
+rutas guardadas. **No se guardan en el repo ni se mandan a ningun sitio.**
 
 ## Punto de partida (casa)
 
@@ -444,7 +465,8 @@ sigues andando. Puedes recargarla a mitad de ruta y no se entera nadie.
 
 ### Lo que no sale de tu Mac
 
-Casa, los lugares guardados y la ruta viven en el `localStorage` del navegador.
+Casa, los lugares, las rutas guardadas y la ruta actual viven en el
+`localStorage` del navegador.
 No se commitean, no se mandan a ningun servidor y no se buscan en ningun
 geocodificador.
 
