@@ -1,101 +1,301 @@
 <!doctype html>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Joystick GPS</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Saira+Condensed:wght@500;600;700&family=Saira:wght@400;500;600&display=swap">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
+  /* Margen de carta nautica: papel frio, tinta marino, y el magenta reservado
+     para lo que esta vivo, que es como lo usan las cartas de verdad. */
+  :root {
+    --paper:   #eeeee8;
+    --panel:   #f7f7f3;
+    --ink:     #16233a;
+    --ink-2:   #5f6d82;
+    --ink-3:   #98a2b0;
+    --shoal:   #d7e5ea;
+    --magenta: #c0176f;
+    --rule:    #cdccc3;
+    --sans: 'Saira', system-ui, sans-serif;
+    --cond: 'Saira Condensed', 'Saira', system-ui, sans-serif;
+    --mono: 'DM Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; display: flex; height: 100vh; }
-  #map { flex: 1; }
-  #side { width: 300px; padding: 14px; overflow-y: auto; background: #16181d; color: #e6e6e6; }
-  h2 { margin: 0 0 12px; font-size: 15px; letter-spacing: .04em; text-transform: uppercase; color: #8ab4f8; }
-  .box { border-top: 1px solid #2c3038; padding: 12px 0; }
-  button { background: #2a2f38; color: #e6e6e6; border: 1px solid #3c434e; border-radius: 6px;
-           padding: 7px 10px; cursor: pointer; font-size: 13px; }
-  button:hover { background: #353c47; }
-  button.on { background: #2f6f4f; border-color: #3d8f66; }
-  .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-  label { display: block; margin-top: 8px; font-size: 12px; color: #9aa3b0; }
-  input[type=range] { width: 100%; }
-  #pad { width: 170px; height: 170px; margin: 10px auto 0; border-radius: 50%;
-         background: #21252c; border: 1px solid #3c434e; position: relative; touch-action: none; }
-  #knob { width: 52px; height: 52px; border-radius: 50%; background: #8ab4f8; position: absolute;
-          left: 59px; top: 59px; pointer-events: none; }
-  code { color: #f0c674; }
-  .stat { font-size: 12px; color: #9aa3b0; margin-top: 6px; }
-  .stat b { color: #e6e6e6; font-weight: 600; }
-  @media (max-width: 700px) {
-    body { flex-direction: column; }
-    #map { height: 55vh; flex: none; }
-    #side { width: 100%; height: 45vh; }
+  body {
+    margin: 0; display: flex; height: 100vh; overflow: hidden;
+    background: var(--paper); color: var(--ink);
+    font: 400 14px/1.45 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  #map { flex: 1; background: var(--shoal); }
+
+  #side {
+    width: 320px; flex: none; display: flex; flex-direction: column;
+    background: var(--panel); border-left: 1px solid var(--rule);
+    padding: 18px 20px 14px;
+  }
+
+  /* --- bloque de titulo, como el de una carta --- */
+  .head { border-bottom: 1px solid var(--rule); padding-bottom: 12px; }
+  h1 {
+    margin: 0; font: 700 15px/1 var(--cond);
+    letter-spacing: .18em; text-transform: uppercase;
+  }
+  .meta {
+    margin-top: 5px; font: 300 11px/1.4 var(--mono);
+    color: var(--ink-2); letter-spacing: .01em;
+  }
+  .meta b { color: var(--ink); font-weight: 500; }
+
+  /* --- rosa de los vientos --- */
+  .rose { display: grid; place-items: center; padding: 20px 0 14px; }
+  #pad {
+    width: clamp(160px, 44vw, 204px); aspect-ratio: 1; position: relative;
+    touch-action: none; cursor: grab;
+  }
+  #pad:active { cursor: grabbing; }
+  #pad svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .dial   { fill: #fff; stroke: var(--rule); stroke-width: 1; }
+  .tick   { stroke: var(--ink-3); stroke-width: 1; }
+  .tick.major { stroke: var(--ink); stroke-width: 1.5; }
+  .card   { fill: var(--ink-2); font: 600 11px var(--cond); letter-spacing: .1em; text-anchor: middle; }
+  .card.n { fill: var(--ink); }
+  .vec    { stroke: var(--magenta); stroke-width: 2.5; stroke-linecap: round; opacity: 0; }
+  .vec.on { opacity: 1; }
+  .bear   { fill: var(--ink); font: 400 17px var(--mono); text-anchor: middle; }
+  .bear.idle { fill: var(--ink-3); }
+  #knob {
+    width: 44px; height: 44px; border-radius: 50%; position: absolute;
+    left: 50%; top: 50%; margin: -22px 0 0 -22px;
+    background: var(--magenta); pointer-events: none;
+    box-shadow: 0 1px 6px rgba(22, 35, 58, .28);
+    transition: transform .18s cubic-bezier(.2, .9, .3, 1.2);
+  }
+  #pad.live #knob { transition: none; }
+
+  /* --- lectura --- */
+  .read { text-align: center; padding-bottom: 4px; }
+  .coord { font: 400 14px/1.5 var(--mono); letter-spacing: -.01em; }
+  .coord.none { color: var(--ink-3); }
+  .sub { font: 300 11px/1.6 var(--mono); color: var(--ink-2); }
+  #status { font: 300 11px/1.6 var(--mono); color: var(--ink-3); min-height: 18px; }
+  #status.warn { color: var(--magenta); }
+
+  /* --- secciones --- */
+  .sec { padding-top: 14px; }
+  .lab {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+    font: 600 10px/1 var(--cond); letter-spacing: .16em; text-transform: uppercase;
+    color: var(--ink-2); margin-bottom: 8px;
+  }
+  .lab span { font: 400 11px var(--mono); letter-spacing: 0; text-transform: none; color: var(--ink); }
+
+  /* --- controles --- */
+  .seg { display: flex; border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; background: #fff; }
+  .seg > * {
+    flex: 1; border: 0; border-right: 1px solid var(--rule); background: transparent;
+    color: var(--ink-2); cursor: pointer; padding: 7px 4px;
+    font: 500 11px/1 var(--cond); letter-spacing: .1em; text-transform: uppercase;
+  }
+  .seg > *:last-child { border-right: 0; }
+  .seg > *:hover { background: var(--shoal); color: var(--ink); }
+  .seg > .on { background: var(--ink); color: #fff; }
+  .seg > .on:hover { background: var(--ink); color: #fff; }
+  .seg > .live { background: var(--magenta); color: #fff; }
+  .seg > .live:hover { background: var(--magenta); color: #fff; }
+
+  .row { display: flex; gap: 7px; margin-top: 7px; }
+  button.ghost {
+    flex: 1; background: #fff; color: var(--ink); cursor: pointer;
+    border: 1px solid var(--rule); border-radius: 3px; padding: 7px 8px;
+    font: 500 11px/1 var(--cond); letter-spacing: .1em; text-transform: uppercase;
+  }
+  button.ghost:hover { background: var(--shoal); }
+  button.ghost:disabled { color: var(--ink-3); cursor: default; background: #fff; }
+
+  input[type=range] {
+    width: 100%; margin: 0 0 7px; accent-color: var(--magenta); height: 18px;
+  }
+
+  .check {
+    display: flex; align-items: center; gap: 7px; cursor: pointer;
+    font-size: 12.5px; color: var(--ink-2); padding: 3px 0;
+  }
+  .check input { accent-color: var(--magenta); margin: 0; }
+  .check:hover { color: var(--ink); }
+
+  /* --- pie --- */
+  .foot { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--rule); }
+  .hint { font-size: 11.5px; color: var(--ink-3); line-height: 1.5; }
+  .hint kbd {
+    font: 400 10px var(--mono); background: #fff; border: 1px solid var(--rule);
+    border-radius: 2px; padding: 1px 4px; color: var(--ink-2);
+  }
+  .link {
+    background: 0; border: 0; padding: 0; cursor: pointer; color: var(--ink-2);
+    font: 400 11.5px var(--sans); text-decoration: underline; text-underline-offset: 3px;
+  }
+  .link:hover { color: var(--magenta); }
+  .hide { display: none; }
+
+  /* --- lugares --- */
+  .place { display: flex; align-items: center; gap: 4px; padding: 3px 0; }
+  .place + .place { border-top: 1px solid var(--rule); }
+  .place .name {
+    flex: 1; min-width: 0; text-align: left; background: 0; border: 0; padding: 3px 0;
+    cursor: pointer; color: var(--ink); font: 500 12.5px var(--sans);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .place .name:hover { color: var(--magenta); }
+  .place .name em { font: 300 10.5px var(--mono); color: var(--ink-3); font-style: normal; margin-left: 6px; }
+  .place .go {
+    background: 0; border: 1px solid var(--rule); border-radius: 3px; cursor: pointer;
+    color: var(--ink-2); padding: 4px 6px;
+    font: 500 10px/1 var(--cond); letter-spacing: .1em; text-transform: uppercase;
+  }
+  .place .go:hover { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .place .del {
+    background: 0; border: 0; cursor: pointer; color: var(--ink-3);
+    font: 400 13px var(--mono); padding: 2px 3px; opacity: 0;
+  }
+  .place:hover .del { opacity: 1; }
+  .place .del:hover { color: var(--magenta); }
+  .empty { font-size: 11.5px; color: var(--ink-3); padding: 2px 0 6px; }
+
+  /* --- cooldown: lo unico que puede gritar --- */
+  .cool {
+    margin-top: 10px; padding: 8px 10px; border-radius: 3px;
+    background: var(--magenta); color: #fff;
+  }
+  .cool b { font: 500 15px var(--mono); }
+  .cool i { display: block; font: 400 11px/1.4 var(--sans); font-style: normal; opacity: .9; }
+
+  /* --- popup de accion en el mapa --- */
+  .leaflet-popup-content-wrapper { border-radius: 3px; box-shadow: 0 2px 12px rgba(22, 35, 58, .25); }
+  .leaflet-popup-content { margin: 12px 13px; font-family: var(--sans); }
+  .pop-c { font: 400 12px var(--mono); color: var(--ink-2); margin-bottom: 8px; }
+  .pop-b { display: flex; gap: 5px; }
+  .pop-b button {
+    flex: 1; background: #fff; border: 1px solid var(--rule); border-radius: 3px;
+    cursor: pointer; color: var(--ink); padding: 6px 8px; white-space: nowrap;
+    font: 500 10.5px/1 var(--cond); letter-spacing: .1em; text-transform: uppercase;
+  }
+  .pop-b button:hover { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .pop-s { display: flex; gap: 5px; margin-top: 7px; }
+  .pop-s input {
+    flex: 1; min-width: 0; border: 1px solid var(--rule); border-radius: 3px;
+    padding: 6px 8px; font: 400 12px var(--sans); color: var(--ink);
+  }
+  .pop-s input:focus { outline: 2px solid var(--magenta); outline-offset: -1px; border-color: transparent; }
+
+  :focus-visible { outline: 2px solid var(--magenta); outline-offset: 2px; }
+
+  /* --- control de vista, sobre el mapa --- */
+  .view {
+    position: absolute; top: 12px; right: 12px; z-index: 1000; display: flex;
+    border: 1px solid var(--rule); border-radius: 3px; overflow: hidden;
+    background: #fff; box-shadow: 0 1px 5px rgba(22, 35, 58, .18);
+  }
+  .view button {
+    border: 0; border-right: 1px solid var(--rule); background: #fff; cursor: pointer;
+    color: var(--ink-2); padding: 7px 11px;
+    font: 500 11px/1 var(--cond); letter-spacing: .1em; text-transform: uppercase;
+  }
+  .view button:last-child { border-right: 0; }
+  .view button:hover { background: var(--shoal); color: var(--ink); }
+  .view button.on { background: var(--magenta); color: #fff; }
+
+  .leaflet-container { font-family: var(--sans); }
+  .leaflet-control-attribution { font-size: 10px; }
+
+  @media (max-width: 760px) {
+    body { flex-direction: column; overflow: auto; height: auto; min-height: 100vh; }
+    #map { height: 46vh; flex: none; }
+    #side { width: 100%; border-left: 0; border-top: 1px solid var(--rule); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
   }
 </style>
 
 <div id="map"></div>
+
 <div id="side">
-  <h2>Joystick GPS</h2>
+  <header class="head">
+    <h1>Joystick GPS</h1>
+    <div class="meta" id="emuOut">emulador: comprobando</div>
+    <div class="row hide" id="emuRow"><button id="emuStart" class="ghost">Arrancar emulador</button></div>
+  </header>
 
-  <div id="pad"><div id="knob"></div></div>
-  <div class="stat">Arrastra el circulo, o usa <code>WASD</code> / flechas.</div>
+  <div class="rose">
+    <div id="pad"><div id="knob"></div></div>
+  </div>
 
-  <div class="box">
-    <label>Velocidad: <b id="kmhLabel">4.5</b> km/h</label>
-    <input type="range" id="kmh" min="0.5" max="20" step="0.5" value="4.5">
-    <div class="row">
+  <div class="read">
+    <div class="coord none" id="posOut">sin posicion</div>
+    <div class="sub"><b id="distOut">0.00</b> km recorridos</div>
+    <div class="sub hide" id="navOut"></div>
+    <div id="status">listo</div>
+    <div class="cool hide" id="cool"></div>
+  </div>
+
+  <div class="sec">
+    <div class="lab">Velocidad <span><b id="kmhLabel">4.5</b> km/h</span></div>
+    <input type="range" id="kmh" min="0.5" max="20" step="0.5" value="4.5" aria-label="Velocidad en km/h">
+    <div class="seg">
       <button data-kmh="4.5">Andar</button>
       <button data-kmh="9">Rapido</button>
       <button data-kmh="15">Bici</button>
     </div>
   </div>
 
-  <div class="box">
-    <label><input type="checkbox" id="routeMode"> Modo ruta (click en mapa = punto)</label>
+  <div class="sec">
+    <div class="lab">Ruta <span id="ptsOut">sin puntos</span></div>
+    <label class="check"><input type="checkbox" id="routeMode"> Marcar puntos en el mapa</label>
     <div class="row">
-      <button id="walk">Recorrer</button>
-      <button id="undo">Quitar ultimo</button>
-      <button id="clearRoute">Borrar ruta</button>
+      <button id="walk" class="ghost">Recorrer</button>
+      <button id="undo" class="ghost">Deshacer</button>
+      <button id="clearRoute" class="ghost">Borrar</button>
     </div>
-    <label>Al llegar al final</label>
-    <div class="row">
-      <label><input type="radio" name="endmode" value="loop" checked> Bucle</label>
-      <label><input type="radio" name="endmode" value="pingpong"> Ida y vuelta</label>
-      <label><input type="radio" name="endmode" value="once"> Parar</label>
+    <div class="seg" style="margin-top:7px">
+      <label><input type="radio" name="endmode" value="loop" class="hide" checked>Bucle</label>
+      <label><input type="radio" name="endmode" value="pingpong" class="hide">Ida y vuelta</label>
+      <label><input type="radio" name="endmode" value="once" class="hide">Parar</label>
     </div>
   </div>
 
-  <div class="box">
+  <div class="sec">
+    <div class="lab">Lugares</div>
+    <div id="places"></div>
+    <div class="row"><button id="savePos" class="ghost">Guardar esta posicion</button></div>
+  </div>
+
+  <div class="sec">
+    <div class="lab">Casa</div>
     <div class="row">
-      <button id="center">Centrar aqui</button>
-      <button id="follow">Seguir</button>
+      <button id="goHome" class="ghost">Ir a casa</button>
+      <button id="setHome" class="ghost">Fijar aqui</button>
     </div>
-    <div class="row">
-      <button id="goHome">Ir a casa</button>
-      <button id="setHome">Fijar casa aqui</button>
+    <div class="hint" id="homeOut" style="margin-top:7px"></div>
+  </div>
+
+  <div class="foot">
+    <label class="check"><input type="checkbox" id="jitter" checked> Ruido GPS +-3 m</label>
+    <div class="hint" style="margin-top:6px">
+      Arrastra la aguja, o usa <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>.
+      Click en el mapa para elegir que hacer con ese punto.
     </div>
-    <div class="stat" id="homeOut"></div>
-  </div>
-
-  <div class="box">
-    <div class="row"><button id="emuStart">Arrancar emulador</button></div>
-    <div class="stat" id="emuOut">emulador: comprobando...</div>
-  </div>
-
-  <div class="box">
-    <label><input type="checkbox" id="jitter" checked> Ruido GPS (+-3 m)</label>
-    <div class="row"><button id="stopSim">Devolver GPS real</button></div>
-  </div>
-
-  <div class="box">
-    <div class="stat">Pos: <b id="posOut">sin fijar</b></div>
-    <div class="stat">Recorrido: <b id="distOut">0.00</b> km</div>
-    <div class="stat">Estado: <b id="status">listo</b></div>
-    <div class="stat">Click en el mapa (sin modo ruta) = fijar posicion.</div>
+    <button id="stopSim" class="link" style="margin-top:8px">Devolver GPS real</button>
   </div>
 </div>
 
 <script>
 const el = (id) => document.getElementById(id);
-const map = L.map('map').setView([40.4168, -3.7038], 16);
+const map = L.map('map', { zoomControl: false }).setView([40.4168, -3.7038], 16);
+L.control.zoom({ position: 'topleft' }).addTo(map);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   { maxZoom: 19, attribution: 'OpenStreetMap' }).addTo(map);
 
@@ -103,17 +303,38 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
 // que velocidad) y pinta lo que el servidor diga. Antes el bucle vivia aqui y
 // Chrome lo estrangulaba en cuanto tapabas la pestaña con el juego.
 let pos = null;                         // {lat, lon} espejo de la posicion del servidor
+let prev = null;                        // posicion anterior, para el rumbo en modo ruta
 let vec = { x: 0, y: 0 };               // joystick normalizado, x=este y=norte
 let route = [];                         // waypoints
 let walking = false;
 let home = null;                        // punto de partida real, solo en localStorage
 let follow = false;                     // si el mapa persigue al marcador
+let places = [];                        // lugares guardados, solo en localStorage
+let navTarget = null;                   // hacia donde vamos andando, si vamos
+let coolUntil = 0;                      // fin del cooldown, epoch ms
 const keys = new Set();
 
-const me = L.circleMarker([0, 0], { radius: 8, color: '#8ab4f8', fillOpacity: .9 });
-const line = L.polyline([], { color: '#f0c674', weight: 3, dashArray: '6 6' }).addTo(map);
+// El magenta es lo vivo: tu posicion, y la ruta mientras la recorres.
+const me = L.circleMarker([0, 0], { radius: 7, color: '#fff', weight: 2,
+  fillColor: '#c0176f', fillOpacity: 1 });
+const line = L.polyline([], { color: '#16233a', weight: 2, opacity: .55, dashArray: '5 5' }).addTo(map);
 const pins = L.layerGroup().addTo(map);
-const homeMark = L.circleMarker([0, 0], { radius: 7, color: '#5fd38d', fillOpacity: .9 });
+const homeMark = L.circleMarker([0, 0], { radius: 6, color: '#16233a', weight: 2,
+  fillColor: '#fff', fillOpacity: 1 });
+const spots = L.layerGroup().addTo(map);
+
+const R_EARTH = 6371000, RAD = Math.PI / 180;
+function metersBetween(a, b) {
+  const dLat = (b.lat - a.lat) * RAD, dLon = (b.lon - a.lon) * RAD;
+  const h = Math.sin(dLat / 2) ** 2 +
+            Math.cos(a.lat * RAD) * Math.cos(b.lat * RAD) * Math.sin(dLon / 2) ** 2;
+  return 2 * R_EARTH * Math.asin(Math.sqrt(h));
+}
+const km = (m) => m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(1) + ' km';
+function clock(sec) {
+  const m = Math.floor(sec / 60);
+  return m + ':' + String(Math.floor(sec % 60)).padStart(2, '0');
+}
 const endmode = () => document.querySelector('input[name=endmode]:checked').value;
 
 // --- servidor ----------------------------------------------------------
@@ -123,10 +344,15 @@ async function send(patch) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch)
     });
-    el('status').textContent = r.ok ? 'enviando' : 'error ' + r.status;
+    setStatus(r.ok ? 'enviando' : 'error ' + r.status, !r.ok);
   } catch (e) {
-    el('status').textContent = 'sin conexion con spoof.py';
+    setStatus('sin conexion con spoof.py', true);
   }
+}
+
+function setStatus(text, warn) {
+  el('status').textContent = text;
+  el('status').classList.toggle('warn', !!warn);
 }
 
 function paint() {
@@ -134,6 +360,7 @@ function paint() {
   me.setLatLng([pos.lat, pos.lon]).addTo(map);
   if (follow) map.panTo([pos.lat, pos.lon], { animate: false });
   el('posOut').textContent = pos.lat.toFixed(6) + ', ' + pos.lon.toFixed(6);
+  el('posOut').classList.remove('none');
 }
 
 // Sondeo solo para pintar. Que Chrome lo frene con la pestaña oculta da igual,
@@ -142,40 +369,101 @@ setInterval(async () => {
   try {
     const s = await fetch('/pos').then((r) => r.json());
     if (s.lat === null) return;
+    prev = pos;
     pos = { lat: s.lat, lon: s.lon };
     paint();
     el('distOut').textContent = (s.dist / 1000).toFixed(2);
     if (walking !== s.walking) {         // la ruta puede acabarse sola
       walking = s.walking;
-      el('walk').classList.toggle('on', walking);
+      setWalking(walking);
+      if (!walking && navTarget) { setStatus('has llegado'); clearNav(); }
     }
+    drawVec(); updateNav(); updatePlaceDists();
   } catch (e) {
-    el('status').textContent = 'sin conexion con spoof.py';
+    setStatus('sin conexion con spoof.py', true);
   }
 }, 1000);
 
-// --- joystick ----------------------------------------------------------
+// --- rosa de los vientos -----------------------------------------------
+// El pad no es solo un mando: marca el rumbo. En modo ruta el joystick no se
+// toca, asi que el rumbo sale de la diferencia entre posiciones consecutivas,
+// que es justo cuando mas rato tienes esto abierto.
 const pad = el('pad'), knob = el('knob');
-const R = 59;
+const CARD = [['N', 0], ['E', 90], ['S', 180], ['O', 270]];
+(function rose() {
+  let s = '<circle class="dial" cx="100" cy="100" r="94"/>';
+  for (let i = 0; i < 16; i++) {
+    const a = i * 22.5 * Math.PI / 180, major = i % 4 === 0;
+    const r2 = major ? 82 : 89;
+    s += '<line class="tick' + (major ? ' major' : '') + '"'
+       + ' x1="' + (100 + Math.sin(a) * 94).toFixed(1) + '" y1="' + (100 - Math.cos(a) * 94).toFixed(1) + '"'
+       + ' x2="' + (100 + Math.sin(a) * r2).toFixed(1) + '" y2="' + (100 - Math.cos(a) * r2).toFixed(1) + '"/>';
+  }
+  for (const [t, deg] of CARD) {
+    const a = deg * Math.PI / 180;
+    s += '<text class="card' + (t === 'N' ? ' n' : '') + '"'
+       + ' x="' + (100 + Math.sin(a) * 71).toFixed(1) + '"'
+       + ' y="' + (100 - Math.cos(a) * 71 + 4).toFixed(1) + '">' + t + '</text>';
+  }
+  s += '<line class="vec" id="vec" x1="100" y1="100" x2="100" y2="100"/>';
+  s += '<text class="bear idle" id="bear" x="100" y="106">---</text>';
+  pad.insertAdjacentHTML('afterbegin',
+    '<svg viewBox="0 0 200 200" aria-hidden="true">' + s + '</svg>');
+})();
+
+const radius = () => pad.clientWidth / 2 - knob.offsetWidth / 2;
+
+function bearing(x, y) { return (Math.atan2(x, y) * 180 / Math.PI + 360) % 360; }
+
+function drawVec() {
+  const v = el('vec'), b = el('bear');
+  let x = vec.x, y = vec.y, m = Math.hypot(x, y);
+  if (m <= 0.05 && walking && pos && prev) {
+    // rumbo del tramo recorrido en el ultimo segundo
+    const dy = pos.lat - prev.lat;
+    const dx = (pos.lon - prev.lon) * Math.cos(pos.lat * Math.PI / 180);
+    const d = Math.hypot(dx, dy);
+    if (d > 1e-9) { x = dx / d; y = dy / d; m = 1; }
+  }
+  if (m <= 0.05) {
+    v.classList.remove('on');
+    b.textContent = '---'; b.classList.add('idle');
+    return;
+  }
+  const k = Math.min(1, m) * 74;
+  v.setAttribute('x2', (100 + x / Math.hypot(x, y) * k).toFixed(1));
+  v.setAttribute('y2', (100 - y / Math.hypot(x, y) * k).toFixed(1));
+  v.classList.add('on');
+  b.textContent = String(Math.round(bearing(x, y))).padStart(3, '0') + '°';
+  b.classList.remove('idle');
+}
+
+// --- joystick ----------------------------------------------------------
 function setVec(x, y) {
+  const R = radius();
   knob.style.transform = 'translate(' + (x * R) + 'px,' + (-y * R) + 'px)';
   // El puntero dispara decenas de eventos por segundo. Solo interesa el cambio.
   if (Math.abs(x - vec.x) < .02 && Math.abs(y - vec.y) < .02) return;
   vec = { x, y };
+  drawVec();
   send({ vx: x, vy: y });
 }
 function drag(e) {
-  const r = pad.getBoundingClientRect();
+  const r = pad.getBoundingClientRect(), R = radius();
   let dx = (e.clientX - r.left - r.width / 2) / R;
   let dy = (e.clientY - r.top - r.height / 2) / R;
   const m = Math.hypot(dx, dy);
   if (m > 1) { dx /= m; dy /= m; }
   setVec(dx, -dy);
 }
-pad.addEventListener('pointerdown', (e) => { pad.setPointerCapture(e.pointerId); drag(e); });
+function release() { pad.classList.remove('live'); setVec(0, 0); }
+pad.addEventListener('pointerdown', (e) => {
+  pad.setPointerCapture(e.pointerId); pad.classList.add('live'); drag(e);
+});
 pad.addEventListener('pointermove', (e) => { if (e.buttons) drag(e); });
-pad.addEventListener('pointerup', () => setVec(0, 0));
-pad.addEventListener('pointercancel', () => setVec(0, 0));
+pad.addEventListener('pointerup', release);
+pad.addEventListener('pointercancel', release);
+addEventListener('resize', () => setVec(vec.x, vec.y));
 
 const KEYMAP = { w: [0, 1], s: [0, -1], a: [-1, 0], d: [1, 0],
                  arrowup: [0, 1], arrowdown: [0, -1], arrowleft: [-1, 0], arrowright: [1, 0] };
@@ -196,119 +484,291 @@ addEventListener('blur', () => { keys.clear(); setVec(0, 0); });
 // --- mapa y ruta -------------------------------------------------------
 map.on('click', (e) => {
   const p = { lat: e.latlng.lat, lon: e.latlng.lng };
-  if (el('routeMode').checked) { route.push(p); drawRoute(); send({ route }); }
-  else { pos = p; paint(); send({ lat: p.lat, lon: p.lon }); }
-  save();
+  if (el('routeMode').checked) { route.push(p); drawRoute(); send({ route }); save(); }
+  else askWhat(p);
 });
+
+// Un click en el mapa ya no te teletransporta de golpe: saltar tiene cooldown y
+// no siempre es lo que quieres. Pregunta primero.
+function askWhat(p) {
+  const box = L.DomUtil.create('div');
+  const d = pos ? ' . a ' + km(metersBetween(pos, p)) : '';
+  box.innerHTML =
+    '<div class="pop-c">' + p.lat.toFixed(6) + ', ' + p.lon.toFixed(6) + d + '</div>' +
+    '<div class="pop-b">' +
+      '<button data-a="walk">Ir andando</button>' +
+      '<button data-a="jump">Saltar aqui</button>' +
+      '<button data-a="save">Guardar</button>' +
+    '</div>' +
+    '<form class="pop-s hide"><input placeholder="Nombre del lugar" maxlength="40"><button>Ok</button></form>';
+  const pop = L.popup({ closeButton: false, offset: [0, -4] })
+    .setLatLng([p.lat, p.lon]).setContent(box).openOn(map);
+  const form = box.querySelector('.pop-s');
+  box.querySelectorAll('.pop-b button').forEach((b) => b.onclick = () => {
+    const a = b.dataset.a;
+    if (a === 'save') {
+      form.classList.remove('hide'); form.querySelector('input').focus(); return;
+    }
+    map.closePopup(pop);
+    if (a === 'walk') walkTo(p); else jumpTo(p);
+  });
+  form.onsubmit = (ev) => {
+    ev.preventDefault();
+    const name = form.querySelector('input').value.trim();
+    if (!name) return;
+    places.push({ name, lat: p.lat, lon: p.lon });
+    renderPlaces(); save(); map.closePopup(pop);
+    setStatus('guardado: ' + name);
+  };
+}
+
+// --- ir a un punto -----------------------------------------------------
+// Andar hacia un sitio es una ruta de dos puntos que para al llegar. El
+// servidor ya sabe recorrer rutas, no hace falta nada nuevo ahi.
+function walkTo(p) {
+  if (!pos) { jumpTo(p); return; }
+  navTarget = p;
+  route = [{ lat: pos.lat, lon: pos.lon }, { lat: p.lat, lon: p.lon }];
+  drawRoute();
+  document.querySelector('input[name=endmode][value=once]').checked = true;
+  document.querySelectorAll('input[name=endmode]').forEach((o) =>
+    o.parentElement.classList.toggle('on', o.checked));
+  walking = true; setWalking(true); setVec(0, 0);
+  send({ route, endmode: 'once', walking: true });
+  updateNav();
+}
+
+// Saltar es lo que dispara cooldown. Avisar de eso vale mas que cualquier
+// otra cosa que pueda poner en esta pantalla.
+function jumpTo(p) {
+  const jump = pos ? metersBetween(pos, p) : 0;
+  clearNav();
+  walking = false; setWalking(false); setVec(0, 0);
+  pos = { lat: p.lat, lon: p.lon }; prev = null; paint();
+  send({ lat: p.lat, lon: p.lon, walking: false });
+  startCooldown(jump / 1000);
+  save();
+}
+
+function clearNav() { navTarget = null; el('navOut').classList.add('hide'); }
+
+function updateNav() {
+  if (!navTarget || !pos || !walking) { el('navOut').classList.add('hide'); return; }
+  const left = metersBetween(pos, navTarget);
+  const kmh = +el('kmh').value;
+  el('navOut').textContent = 'faltan ' + km(left) + ' . ' + clock(left / (kmh * 1000 / 3600));
+  el('navOut').classList.remove('hide');
+}
+
+// --- cooldown ----------------------------------------------------------
+// Tabla del README. Tras un salto largo, cualquier accion en el juego dentro de
+// la ventana es la forma mas rapida de comerse un soft ban.
+const COOLDOWN = [[1, 30], [5, 120], [10, 360], [25, 660], [30, 840], [65, 1320],
+                  [100, 2100], [250, 2700], [500, 3600], [1000, 5400], [1500, 7200]];
+function coolFor(distKm) {
+  if (distKm < 1) return 0;
+  for (const [d, sec] of COOLDOWN) if (distKm <= d) return sec;
+  return 7200;
+}
+function startCooldown(distKm) {
+  const sec = coolFor(distKm);
+  if (!sec) return;
+  coolUntil = Date.now() + sec * 1000;
+  save(); tickCool();
+}
+function tickCool() {
+  const left = Math.ceil((coolUntil - Date.now()) / 1000);
+  const box = el('cool');
+  if (left <= 0) { box.classList.add('hide'); return; }
+  box.classList.remove('hide');
+  box.innerHTML = '<b>' + clock(left) + '</b>'
+    + '<i>Cooldown. No captures, no gires paradas, no abras regalos.</i>';
+}
+setInterval(tickCool, 1000);
+
+// --- lugares -----------------------------------------------------------
+function renderPlaces() {
+  const box = el('places');
+  spots.clearLayers();
+  if (!places.length) {
+    box.innerHTML = '<div class="empty">Sin lugares. Guarda uno desde el mapa o con el boton de abajo.</div>';
+    return;
+  }
+  box.innerHTML = '';
+  places.forEach((p, i) => {
+    L.circleMarker([p.lat, p.lon], { radius: 4, color: '#16233a', weight: 1.5,
+      fillColor: '#d7e5ea', fillOpacity: 1 }).bindTooltip(p.name).addTo(spots);
+    const row = L.DomUtil.create('div', 'place', box);
+    const d = pos ? '<em>' + km(metersBetween(pos, p)) + '</em>' : '';
+    row.innerHTML = '<button class="name">' + esc(p.name) + d + '</button>'
+      + '<button class="go" data-a="walk">Andar</button>'
+      + '<button class="go" data-a="jump">Saltar</button>'
+      + '<button class="del" title="Borrar">x</button>';
+    row.querySelector('.name').onclick = () => map.setView([p.lat, p.lon], Math.max(map.getZoom(), 16));
+    row.querySelector('[data-a=walk]').onclick = () => walkTo(p);
+    row.querySelector('[data-a=jump]').onclick = () => jumpTo(p);
+    row.querySelector('.del').onclick = () => { places.splice(i, 1); renderPlaces(); save(); };
+  });
+}
+function updatePlaceDists() {
+  if (!pos) return;
+  el('places').querySelectorAll('.place').forEach((row, i) => {
+    const em = row.querySelector('em');
+    if (em && places[i]) em.textContent = km(metersBetween(pos, places[i]));
+  });
+}
+
+const esc = (t) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+el('savePos').onclick = () => {
+  if (!pos) { setStatus('no hay posicion que guardar', true); return; }
+  map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 16));
+  askWhat(pos);
+};
 
 function drawRoute() {
   line.setLatLngs(route.map((p) => [p.lat, p.lon]));
   pins.clearLayers();
   route.forEach((p, i) => L.circleMarker([p.lat, p.lon],
-    { radius: 5, color: '#f0c674', fillOpacity: 1 }).bindTooltip(String(i + 1)).addTo(pins));
+    { radius: 4, color: '#16233a', weight: 1.5, fillColor: '#fff', fillOpacity: 1 })
+    .bindTooltip(String(i + 1)).addTo(pins));
+  el('ptsOut').textContent = route.length
+    ? route.length + (route.length === 1 ? ' punto' : ' puntos') : 'sin puntos';
+}
+
+// Recorriendo, la ruta se pinta en magenta: en un vistazo sabes si esta viva.
+function setWalking(on) {
+  el('walk').classList.toggle('on', on);
+  line.setStyle(on
+    ? { color: '#c0176f', opacity: .9, dashArray: null }
+    : { color: '#16233a', opacity: .55, dashArray: '5 5' });
 }
 
 el('walk').onclick = () => {
-  if (route.length < 2) { el('status').textContent = 'marca 2 puntos o mas'; return; }
+  if (route.length < 2) { setStatus('marca 2 puntos o mas', true); return; }
   walking = !walking;
-  el('walk').classList.toggle('on', walking);
+  setWalking(walking);
   const patch = { walking, route, endmode: endmode() };
   if (walking && !pos) { patch.lat = route[0].lat; patch.lon = route[0].lon; }
   send(patch);
 };
 el('undo').onclick = () => { route.pop(); drawRoute(); send({ route }); save(); };
 el('clearRoute').onclick = () => {
-  route = []; walking = false; el('walk').classList.remove('on');
+  route = []; walking = false; setWalking(false); clearNav();
   drawRoute(); send({ route, walking }); save();
 };
 el('stopSim').onclick = async () => {
-  walking = false; el('walk').classList.remove('on'); setVec(0, 0);
-  pos = null; if (map.hasLayer(me)) map.removeLayer(me);
+  walking = false; setWalking(false); setVec(0, 0); clearNav();
+  pos = null; prev = null;
+  if (map.hasLayer(me)) map.removeLayer(me);
+  el('posOut').textContent = 'sin posicion';
+  el('posOut').classList.add('none');
   await fetch('/clear', { method: 'POST' });
-  el('status').textContent = 'GPS real restaurado';
+  setStatus('GPS real restaurado');
 };
-el('kmh').oninput = (e) => { el('kmhLabel').textContent = e.target.value; send({ kmh: +e.target.value }); save(); };
+el('kmh').oninput = (e) => { setKmh(e.target.value); send({ kmh: +e.target.value }); save(); };
+function setKmh(v) {
+  el('kmh').value = v;
+  el('kmhLabel').textContent = v;
+  document.querySelectorAll('[data-kmh]').forEach((b) =>
+    b.classList.toggle('on', b.dataset.kmh === String(v)));
+}
 document.querySelectorAll('[data-kmh]').forEach((b) => b.onclick = () => {
-  el('kmh').value = b.dataset.kmh; el('kmhLabel').textContent = b.dataset.kmh;
-  send({ kmh: +b.dataset.kmh }); save();
+  setKmh(b.dataset.kmh); send({ kmh: +b.dataset.kmh }); save();
 });
 el('jitter').onchange = (e) => send({ jitter: e.target.checked });
-document.querySelectorAll('input[name=endmode]').forEach((r) =>
-  r.onchange = () => send({ endmode: endmode() }));
+document.querySelectorAll('input[name=endmode]').forEach((r) => r.onchange = () => {
+  document.querySelectorAll('input[name=endmode]').forEach((o) =>
+    o.parentElement.classList.toggle('on', o.checked));
+  send({ endmode: endmode() });
+});
 
-// --- casa --------------------------------------------------------------
-function showHome() {
-  if (home) {
-    el('homeOut').textContent = 'Casa: ' + home.lat.toFixed(6) + ', ' + home.lon.toFixed(6);
-    homeMark.setLatLng([home.lat, home.lon]).addTo(map);
-  } else {
-    el('homeOut').textContent = 'Casa sin fijar. Centra tu portal, haz click y pulsa "Fijar casa aqui".';
-    if (map.hasLayer(homeMark)) map.removeLayer(homeMark);
-  }
-}
-el('setHome').onclick = () => {
-  if (!pos) { el('status').textContent = 'primero haz click en el mapa'; return; }
-  home = { ...pos }; showHome(); save();
-};
-el('goHome').onclick = () => {
-  if (!home) { el('status').textContent = 'no hay casa fijada'; return; }
-  walking = false; el('walk').classList.remove('on'); setVec(0, 0);
-  pos = { ...home }; paint();
-  send({ lat: home.lat, lon: home.lon, walking: false });
-};
-
-// --- centrar y seguir --------------------------------------------------
-// El mapa no se mueve solo a proposito: si lo arrastras para mirar otra zona,
-// no quiero que te lo devuelva al sitio en el siguiente sondeo. "Seguir" lo
-// activa a peticion.
+// --- control de vista, sobre el mapa -----------------------------------
+const view = L.DomUtil.create('div', 'view', map.getContainer());
+view.innerHTML = '<button id="center">Centrar</button><button id="follow">Seguir</button>';
+L.DomEvent.disableClickPropagation(view);
+L.DomEvent.disableScrollPropagation(view);
 el('center').onclick = () => {
-  if (!pos) { el('status').textContent = 'no hay posicion todavia'; return; }
+  if (!pos) { setStatus('no hay posicion todavia', true); return; }
   map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 17));
 };
+// El mapa no persigue al marcador por defecto: si lo arrastras para mirar otra
+// zona, no quiero que te lo devuelva al sitio en el siguiente sondeo.
 el('follow').onclick = () => {
   follow = !follow;
   el('follow').classList.toggle('on', follow);
   if (follow && pos) map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 17));
+  save();
+};
+
+// --- casa --------------------------------------------------------------
+function showHome() {
+  if (home) {
+    el('homeOut').textContent = 'Casa en ' + home.lat.toFixed(6) + ', ' + home.lon.toFixed(6);
+    homeMark.setLatLng([home.lat, home.lon]).addTo(map);
+  } else {
+    el('homeOut').textContent = 'Sin casa. Haz click en tu portal y pulsa "Fijar aqui".';
+    if (map.hasLayer(homeMark)) map.removeLayer(homeMark);
+  }
+}
+el('setHome').onclick = () => {
+  if (!pos) { setStatus('primero haz click en el mapa', true); return; }
+  home = { ...pos }; showHome(); save();
+};
+el('goHome').onclick = () => {
+  if (!home) { setStatus('no hay casa fijada', true); return; }
+  jumpTo(home);
 };
 
 // --- emulador ----------------------------------------------------------
+// Estado ambiente en el bloque de titulo. El boton solo aparece si hace falta:
+// con el emulador en marcha no hay nada que pulsar.
 el('emuStart').onclick = async () => {
-  el('emuOut').textContent = 'emulador: arrancando, tarda un par de minutos...';
+  el('emuOut').textContent = 'emulador: arrancando, tarda un par de minutos';
   const r = await fetch('/emulator', { method: 'POST' });
   if (!r.ok) el('emuOut').textContent = 'emulador: ' + (await r.json()).error;
   emuPoll();
 };
 
 async function emuPoll() {
+  let text, offer = false;
   try {
     const s = await fetch('/emulator').then((r) => r.json());
     const busy = s.starting === true;
-    el('emuStart').disabled = busy || s.booted === 'yes';
     if (s.booted === 'yes') {
-      const ok = s.gles === '196609' && s.icd === 'kosmickrisp';
-      el('emuOut').textContent = ok
-        ? 'emulador: listo (' + s.size + ', ES 3.1, kosmickrisp)'
-        : 'emulador: arrancado PERO mal (gles=' + s.gles + ' icd=' + s.icd + '), reinicialo';
+      text = (s.gles === '196609' && s.icd === 'kosmickrisp')
+        ? 'Emulador <b>' + s.size + '</b> . ES 3.1 . kosmickrisp'
+        : 'Emulador mal: gles ' + s.gles + ', icd ' + s.icd + '. Reinicialo';
     } else if (busy) {
-      el('emuOut').textContent = 'emulador: ' + (s.log && s.log.length ? s.log[s.log.length - 1] : 'arrancando...');
+      text = s.log && s.log.length ? s.log[s.log.length - 1].replace('[emulator] ', '') : 'arrancando';
     } else {
-      el('emuOut').textContent = 'emulador: apagado';
+      text = 'Emulador apagado'; offer = true;
     }
-  } catch (e) { el('emuOut').textContent = 'emulador: sin conexion con spoof.py'; }
+  } catch (e) { text = 'Sin conexion con spoof.py'; }
+  el('emuOut').innerHTML = text;
+  el('emuRow').classList.toggle('hide', !offer);
 }
 emuPoll();
 setInterval(emuPoll, 3000);
 
 // --- persistencia ------------------------------------------------------
 const save = () => localStorage.setItem('joystick',
-  JSON.stringify({ route, kmh: el('kmh').value, pos, home }));
+  JSON.stringify({ route, kmh: el('kmh').value, pos, home, follow, places, coolUntil }));
 (function load() {
   try {
     const s = JSON.parse(localStorage.getItem('joystick') || '{}');
-    if (s.route) { route = s.route; drawRoute(); }
-    if (s.kmh) { el('kmh').value = s.kmh; el('kmhLabel').textContent = s.kmh; }
+    if (s.route) { route = s.route; }
+    setKmh(s.kmh || el('kmh').value);
+    follow = !!s.follow;
+    el('follow').classList.toggle('on', follow);
     home = s.home || null;
+    places = s.places || [];
+    coolUntil = s.coolUntil || 0;       // el cooldown sobrevive a recargar la pestaña
+    drawRoute();
+    renderPlaces();
     showHome();
+    tickCool();
+    document.querySelector('input[name=endmode]:checked').parentElement.classList.add('on');
     // Arranca siempre en casa: asi el movil nunca abre en una posicion lejana.
     const start = home || s.pos;
     const patch = { route, kmh: +el('kmh').value, jitter: el('jitter').checked,
@@ -320,6 +780,6 @@ const save = () => localStorage.setItem('joystick',
       map.fitBounds(route.map((p) => [p.lat, p.lon]), { padding: [40, 40] });
     }
     send(patch);
-  } catch (e) { showHome(); }
+  } catch (e) { drawRoute(); renderPlaces(); showHome(); }
 })();
 </script>
