@@ -18,6 +18,7 @@
     --ink-3:   #98a2b0;
     --shoal:   #d7e5ea;
     --magenta: #c0176f;
+    --gold:    #c9962a;
     --rule:    #cdccc3;
     --sans: 'Saira', system-ui, sans-serif;
     --cond: 'Saira Condensed', 'Saira', system-ui, sans-serif;
@@ -270,6 +271,31 @@
   .view button:hover { background: var(--shoal); color: var(--ink); }
   .view button.on { background: var(--magenta); color: #fff; }
 
+  /* --- buscador, sobre el mapa --- */
+  .find {
+    position: absolute; top: 46px; right: 12px; z-index: 1000; width: 268px;
+    max-width: calc(100% - 24px);
+    border: 1px solid var(--rule); border-radius: 3px; overflow: hidden;
+    background: #fff; box-shadow: 0 1px 5px rgba(22, 35, 58, .18);
+  }
+  .find form { display: flex; }
+  .find input {
+    flex: 1; min-width: 0; border: 0; padding: 7px 9px;
+    font: 400 12px var(--sans); color: var(--ink); background: #fff;
+  }
+  .find input:focus { outline: 2px solid var(--magenta); outline-offset: -2px; }
+  .find button {
+    border: 0; border-left: 1px solid var(--rule); background: #fff; cursor: pointer;
+    color: var(--ink-2); padding: 7px 11px;
+    font: 500 11px/1 var(--cond); letter-spacing: .1em; text-transform: uppercase;
+  }
+  .find button:hover { background: var(--shoal); color: var(--ink); }
+  #findPoi { width: 100%; border-left: 0; border-top: 1px solid var(--rule); }
+  #found:not(:empty) {
+    border-top: 1px solid var(--rule); max-height: 210px; overflow-y: auto;
+    padding: 2px 9px 4px;
+  }
+
   .leaflet-container { font-family: var(--sans); }
   .leaflet-control-attribution { font-size: 10px; }
 
@@ -359,15 +385,6 @@
       <input placeholder="Nombre de la ruta" maxlength="40" aria-label="Nombre de la ruta">
       <button class="ghost" style="flex:0 0 auto">Ok</button>
     </form>
-  </div>
-
-  <div class="sec">
-    <div class="lab">Buscar sitio</div>
-    <form class="pop-s" id="findForm">
-      <input id="findQ" placeholder="Calle, plaza, parque..." maxlength="80" aria-label="Buscar un sitio">
-      <button class="ghost" style="flex:0 0 auto">Ir</button>
-    </form>
-    <div id="found"></div>
   </div>
 
   <div class="sec">
@@ -640,7 +657,7 @@ map.on('click', (e) => {
 
 // Un click en el mapa ya no te teletransporta de golpe: saltar tiene cooldown y
 // no siempre es lo que quieres. Pregunta primero.
-function askWhat(p) {
+function askWhat(p, name) {
   const box = L.DomUtil.create('div');
   const d = pos ? ' . a ' + km(metersBetween(pos, p)) : '';
   box.innerHTML =
@@ -654,6 +671,7 @@ function askWhat(p) {
   const pop = L.popup({ offset: [0, -4] })
     .setLatLng([p.lat, p.lon]).setContent(box).openOn(map);
   const form = box.querySelector('.pop-s');
+  if (name) form.querySelector('input').value = name;
   box.querySelectorAll('.pop-b button').forEach((b) => b.onclick = () => {
     const a = b.dataset.a;
     if (a === 'save') {
@@ -918,7 +936,26 @@ el('savePos').onclick = () => {
   askWhat(pos);
 };
 
-// --- buscador de sitios ------------------------------------------------
+// --- buscador, sobre el mapa -------------------------------------------
+// Vive encima del mapa y no en el lateral: buscar un sitio es mirar el mapa,
+// no configurar el joystick.
+const finder = L.DomUtil.create('div', 'find', map.getContainer());
+finder.innerHTML =
+  '<form id="findForm">'
+  + '<input id="findQ" placeholder="Buscar un sitio" maxlength="80" aria-label="Buscar un sitio">'
+  + '<button title="Buscar">Ir</button>'
+  + '</form>'
+  + '<button id="findPoi">Candidatos a parada</button>'
+  + '<div id="found"></div>';
+L.DomEvent.disableClickPropagation(finder);
+L.DomEvent.disableScrollPropagation(finder);
+// Enter explicito. requestSubmit hace justo lo mismo que el submit implicito,
+// asi que no cambia nada, pero deja de depender de si Leaflet se come la tecla
+// dentro del contenedor del mapa, que es lo que ya le pasa al popup de guardar.
+el('findQ').onkeydown = (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); el('findForm').requestSubmit(); }
+};
+
 // Nominatim de OpenStreetMap: sin clave, sin dependencia y con CORS abierto.
 // Busca solo al enviar el formulario, nunca al teclear: su politica pide como
 // mucho una peticion por segundo, y asi no hay que inventarse un debounce.
@@ -972,6 +1009,72 @@ function renderFound(hits) {
   });
   map.fitBounds(hits.map((h) => [h.lat, h.lon]), { padding: [40, 40], maxZoom: 16 });
 }
+
+// --- candidatos a parada -----------------------------------------------
+// No hay ninguna API de paradas ni de gimnasios. Lo que circula por internet
+// son scrapers de la red privada del juego: contra los terminos de servicio y
+// con riesgo para la cuenta. Esto es otra cosa y conviene no confundirla.
+//
+// Las paradas salen de portales de Ingress, y esos de arte urbano, monumentos,
+// fuentes, iglesias, parques infantiles y pistas. Overpass sabe donde esta todo
+// eso en OpenStreetMap. O sea que pinta CANDIDATOS: habra POI que no sean
+// parada, y paradas que no esten en OSM. Como brujula para elegir barrio sirve;
+// como mapa de paradas, no.
+const pois = L.layerGroup().addTo(map);
+const POI_FILTROS = [
+  '["tourism"="artwork"]',
+  '["historic"]',
+  '["amenity"~"^(place_of_worship|fountain|library|post_office|townhall|theatre|community_centre)$"]',
+  '["leisure"~"^(playground|pitch|park|fitness_station)$"]',
+];
+
+function overpassQuery(b) {
+  // Overpass quiere la caja como sur,oeste,norte,este.
+  const caja = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()]
+    .map((n) => n.toFixed(5)).join(',');
+  const cuerpo = POI_FILTROS
+    .map((f) => 'node' + f + '(' + caja + ');way' + f + '(' + caja + ');').join('');
+  // "out center" da un punto para los recintos, que en OSM son poligonos.
+  return '[out:json][timeout:25];(' + cuerpo + ');out center 250;';
+}
+
+el('findPoi').onclick = async () => {
+  const btn = el('findPoi');
+  if (pois.getLayers().length) {
+    pois.clearLayers(); btn.textContent = 'Candidatos a parada';
+    setStatus('candidatos ocultos'); return;
+  }
+  // Overpass cobra el area en tiempo de CPU. Por debajo de zoom 14 la consulta
+  // tarda o la rechazan, y ademas salen tantos puntos que no dicen nada.
+  if (map.getZoom() < 14) { setStatus('acercate mas para buscar candidatos', true); return; }
+  setStatus('buscando candidatos...');
+  try {
+    const r = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'data=' + encodeURIComponent(overpassQuery(map.getBounds())),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const items = (await r.json()).elements || [];
+    pois.clearLayers();
+    items.forEach((it) => {
+      const lat = it.lat ?? it.center?.lat, lon = it.lon ?? it.center?.lon;
+      if (lat == null || lon == null) return;
+      const t = it.tags || {};
+      const etiqueta = t.name
+        || t.tourism || t.historic || t.amenity || t.leisure || 'sin nombre';
+      L.circleMarker([lat, lon], { radius: 5, color: '#16233a', weight: 1.5,
+        fillColor: '#c9962a', fillOpacity: .95 })
+        .bindTooltip(etiqueta)
+        .on('click', () => askWhat({ lat, lon }, t.name))
+        .addTo(pois);
+    });
+    btn.textContent = 'Ocultar candidatos';
+    setStatus(items.length + ' candidatos, que no son paradas reales');
+  } catch (err) {
+    setStatus('Overpass no responde: ' + err.message, true);
+  }
+};
 
 function drawRoute() {
   line.setLatLngs(route.map((p) => [p.lat, p.lon]));
