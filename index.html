@@ -277,10 +277,11 @@
   <div class="sec">
     <div class="lab">Casa</div>
     <div class="row">
-      <button id="goHome" class="ghost">Ir a casa</button>
-      <button id="setHome" class="ghost">Fijar aqui</button>
+      <button id="homeWalk" class="ghost">Andar a casa</button>
+      <button id="homeJump" class="ghost">Saltar a casa</button>
     </div>
     <div class="hint" id="homeOut" style="margin-top:7px"></div>
+    <button id="setHome" class="link" style="margin-top:6px">Fijar casa en esta posicion</button>
   </div>
 
   <div class="foot">
@@ -504,8 +505,8 @@ function askWhat(p) {
   box.innerHTML =
     '<div class="pop-c">' + p.lat.toFixed(6) + ', ' + p.lon.toFixed(6) + d + '</div>' +
     '<div class="pop-b">' +
-      '<button data-a="walk">Ir andando</button>' +
-      '<button data-a="jump">Saltar aqui</button>' +
+      '<button data-a="walk">Andar</button>' +
+      '<button data-a="jump">Saltar</button>' +
       '<button data-a="save">Guardar</button>' +
     '</div>' +
     '<form class="pop-s hide"><input placeholder="Nombre del lugar" maxlength="40"><button>Ok</button></form>';
@@ -729,7 +730,7 @@ function showHome() {
     el('homeOut').textContent = 'Casa en ' + home.lat.toFixed(6) + ', ' + home.lon.toFixed(6);
     homeMark.setLatLng([home.lat, home.lon]).addTo(map);
   } else {
-    el('homeOut').textContent = 'Sin casa. Haz click en tu portal y pulsa "Fijar aqui".';
+    el('homeOut').textContent = 'Sin casa. Ponte en tu portal y fijala aqui debajo.';
     if (map.hasLayer(homeMark)) map.removeLayer(homeMark);
   }
 }
@@ -737,7 +738,13 @@ el('setHome').onclick = () => {
   if (!pos) { setStatus('primero haz click en el mapa', true); return; }
   home = { ...pos }; showHome(); save();
 };
-el('goHome').onclick = () => {
+// Andar es lo normal: volver a casa desde el barrio no deberia costarte un
+// cooldown. Saltar sigue estando, pero pidiendolo.
+el('homeWalk').onclick = () => {
+  if (!home) { setStatus('no hay casa fijada', true); return; }
+  walkTo(home);
+};
+el('homeJump').onclick = () => {
   if (!home) { setStatus('no hay casa fijada', true); return; }
   jumpTo(home);
 };

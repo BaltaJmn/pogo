@@ -264,10 +264,11 @@ Para usar otro AVD: `POGO_AVD=MiOtroAvd ./emulator.sh start`, o ponlo en `.env`.
 | Fin de ruta | Bucle, Ida y vuelta, o Parar |
 | Guardar un lugar | Click en el mapa, "Guardar", y le pones nombre |
 | Guardar donde estas | Boton "Guardar esta posicion" |
-| Ir andando a un sitio | "Ir andando" en el mapa, o "Andar" en la lista de lugares |
-| Saltar a un sitio | "Saltar aqui" en el mapa, o "Saltar" en la lista |
-| Fijar casa | Boton "Fijar aqui", con la posicion puesta en tu portal |
-| Volver a casa | Boton "Ir a casa" |
+| Ir andando a un sitio | "Andar", en el globo del mapa o en la lista de lugares |
+| Saltar a un sitio | "Saltar", en el globo del mapa o en la lista |
+| Fijar casa | "Fijar casa en esta posicion", con la posicion puesta en tu portal |
+| Volver a casa andando | Boton "Andar a casa" |
+| Volver a casa de golpe | Boton "Saltar a casa", tiene cooldown |
 | Centrar el mapa | Boton "Centrar aqui" |
 | Que el mapa te siga | Boton "Seguir" (se queda activado) |
 | Arrancar el emulador | Boton "Arrancar emulador" |
@@ -326,15 +327,19 @@ sesiones.
 Una sola vez:
 
 1. Busca tu portal en el mapa y haz zoom.
-2. Haz click encima, con "Modo ruta" desactivado, y pulsa "Saltar aqui".
-3. Pulsa "Fijar aqui" en la seccion Casa.
+2. Haz click encima, con "Modo ruta" desactivado, y pulsa "Saltar".
+3. Pulsa "Fijar casa en esta posicion", en la seccion Casa.
 
 Se guarda en el `localStorage` del navegador. **No se guarda en el repo ni se
 manda a ningun servidor**: tu direccion no sale de tu Mac. Si borras los datos
 del navegador hay que volver a fijarla.
 
-El boton "Ir a casa" te devuelve ahi de golpe. Si venias de una ubicacion
-lejana, ese salto tambien tiene cooldown antes de poder hacer acciones.
+Hay dos formas de volver:
+
+- **"Andar a casa"**: te lleva caminando, como cualquier otro lugar. Sin
+  cooldown, porque andar no dispara nada. Es lo que quieres casi siempre.
+- **"Saltar a casa"**: teletransporte. Util si estabas lejos de verdad, pero
+  **dispara cooldown** como cualquier salto.
 
 ## Reglas de Pokemon GO
 
