@@ -177,7 +177,12 @@
   /* --- popup de accion en el mapa --- */
   .leaflet-popup-content-wrapper { border-radius: 3px; box-shadow: 0 2px 12px rgba(22, 35, 58, .25); }
   .leaflet-popup-content { margin: 12px 13px; font-family: var(--sans); }
-  .pop-c { font: 400 12px var(--mono); color: var(--ink-2); margin-bottom: 8px; }
+  .pop-c { font: 400 12px var(--mono); color: var(--ink-2); margin-bottom: 8px; padding-right: 16px; }
+  .leaflet-popup-close-button {
+    color: var(--ink-3) !important; font: 400 16px/1 var(--mono) !important;
+    width: 22px !important; height: 22px !important; padding: 5px 0 0 !important;
+  }
+  .leaflet-popup-close-button:hover { color: var(--magenta) !important; }
   .pop-b { display: flex; gap: 5px; }
   .pop-b button {
     flex: 1; background: #fff; border: 1px solid var(--rule); border-radius: 3px;
@@ -489,6 +494,7 @@ addEventListener('keydown', (e) => {
 });
 addEventListener('keyup', (e) => { keys.delete(e.key.toLowerCase()); fromKeys(); });
 addEventListener('blur', () => { keys.clear(); setVec(0, 0); });
+addEventListener('keydown', (e) => { if (e.key === 'Escape') map.closePopup(); });
 
 // --- mapa y ruta -------------------------------------------------------
 map.on('click', (e) => {
@@ -510,7 +516,7 @@ function askWhat(p) {
       '<button data-a="save">Guardar</button>' +
     '</div>' +
     '<form class="pop-s hide"><input placeholder="Nombre del lugar" maxlength="40"><button>Ok</button></form>';
-  const pop = L.popup({ closeButton: false, offset: [0, -4] })
+  const pop = L.popup({ offset: [0, -4] })
     .setLatLng([p.lat, p.lon]).setContent(box).openOn(map);
   const form = box.querySelector('.pop-s');
   box.querySelectorAll('.pop-b button').forEach((b) => b.onclick = () => {
