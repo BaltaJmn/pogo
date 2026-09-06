@@ -493,7 +493,10 @@ setInterval(async () => {
     // `dist` se reinicia cada vez que colocas la posicion, asi que acumulamos
     // deltas en vez de leerlo tal cual: un salto no te borra el progreso del
     // huevo, igual que no te lo borra en el juego.
-    if (s.dist > lastDist && +el('kmh').value <= CUENTA_MAX) goalDone += s.dist - lastDist;
+    // La velocidad la manda el servidor, no el slider: si los dos se
+    // desincronizan, lo que cuenta es a que velocidad se anduvo de verdad.
+    if (s.dist > lastDist && (s.kmh ?? +el('kmh').value) <= CUENTA_MAX)
+      goalDone += s.dist - lastDist;
     lastDist = s.dist;
     showGoal();
     routeIdx = s.idx || 0;
