@@ -347,3 +347,45 @@ de lo que hace este repo:
 
 La unica via viva es portarlo a Android con root y ocultacion de mock location,
 que es otro proyecto y donde la deteccion tambien pelea.
+
+### 2026-09-06, tarde: el juego no sigue la posicion en vivo
+
+Sintoma: al mover el joystick en la web el avatar no se mueve. Al cerrar y
+reabrir Pokemon GO aparece en la posicion nueva. O sea, la posicion llega, pero
+el juego solo la lee al arrancar.
+
+**El canal funciona.** Un solo `adb emu geo fix -4.7630000 37.8858350` aterriza
+exacto y al instante:
+
+```
+last location=Location[gps 37.885835,-4.762998 hAcc=5.0 et=+28m30s490ms ...]
+```
+
+**El GPS emulado emite a 1 Hz, no mas.** Empujando 8 posiciones seguidas en
+metodo bucle rapido, el proveedor `gps` solo tomo una: `et` avanzo un segundo
+justo. No es un fallo, es la cadencia del HAL. Empujar mas rapido no sirve de
+nada.
+
+**El proveedor `fused` va con retraso.** Con `gps` en -4.762957, `fused` marcaba
+-4.762991, unos 3 metros por detras, y con `vel` casi cero. Google Play Services
+suaviza los saltos. Pokemon GO esta registrado en los dos:
+
+```
+gps provider:
+  10229/com.nianticlabs.pokemongo/092601A3 Request[@+1s0ms HIGH_ACCURACY, ...]
+fused provider:
+  10229/com.nianticlabs.pokemongo/38855783 Request[@+1s0ms BALANCED, ...]
+```
+
+Pide 1 Hz en ambos, asi que las actualizaciones le estan llegando.
+
+**El bucle de movimiento vive en el navegador y se estrangula.** Midiendo `/pos`
+mientras la pestaña estaba oculta: 12 lecturas seguidas, una sola coordenada. Con
+la pestaña despierta avanza a 1.25 m/s clavados. Chrome baja el temporizador de
+las pestañas de fondo, y para mirar el juego hay que tapar el navegador. Esto
+contamina cualquier medida y ademas rompe el uso normal.
+
+Pendiente: paseo largo de 150 s inyectando por `adb` directamente, sin navegador,
+para ver si el avatar sigue la linea. Si la sigue, el problema es el
+estrangulamiento del temporizador y el arreglo es sacar el bucle de `index.html`
+y meterlo en `spoof.py`. Si no la sigue, el problema es del cliente de Niantic.
