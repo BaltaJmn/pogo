@@ -32,11 +32,15 @@
   }
   #map { flex: 1; background: var(--shoal); }
 
+  /* Lo que usas mientras andas se queda quieto arriba. Solo baja la
+     biblioteca: rutas, lugares y casa, que se tocan entre trayecto y trayecto. */
   #side {
     width: 320px; flex: none; display: flex; flex-direction: column;
     background: var(--panel); border-left: 1px solid var(--rule);
-    padding: 18px 20px 14px; overflow-y: auto;
+    padding: 18px 20px 14px; overflow: hidden;
   }
+  .fixed { flex: none; }
+  .roll { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -20px; padding: 0 20px; }
 
   /* --- bloque de titulo, como el de una carta --- */
   .head { border-bottom: 1px solid var(--rule); padding-bottom: 12px; }
@@ -128,7 +132,7 @@
   .check:hover { color: var(--ink); }
 
   /* --- pie --- */
-  .foot { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--rule); }
+  .foot { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rule); }
   .hint { font-size: 11.5px; color: var(--ink-3); line-height: 1.5; }
   .hint kbd {
     font: 400 10px var(--mono); background: #fff; border: 1px solid var(--rule);
@@ -272,7 +276,8 @@
   @media (max-width: 760px) {
     body { flex-direction: column; overflow: auto; height: auto; min-height: 100vh; }
     #map { height: 46vh; flex: none; }
-    #side { width: 100%; border-left: 0; border-top: 1px solid var(--rule); }
+    #side { width: 100%; border-left: 0; border-top: 1px solid var(--rule); overflow: visible; }
+    .roll { overflow: visible; min-height: auto; }
   }
   @media (prefers-reduced-motion: reduce) {
     #side *, .view *, .leaflet-popup { transition: none !important; animation: none !important; }
@@ -282,6 +287,7 @@
 <div id="map"></div>
 
 <div id="side">
+ <div class="fixed">
   <header class="head">
     <h1>Joystick GPS</h1>
     <div class="meta" id="emuOut">emulador: comprobando</div>
@@ -327,7 +333,9 @@
     </div>
     <div class="sub hide" id="speedWarn">A mas de 10.5 km/h el juego no cuenta distancia.</div>
   </div>
+ </div>
 
+ <div class="roll">
   <div class="sec">
     <div class="lab">Ruta <span id="ptsOut">sin puntos</span></div>
     <label class="check"><input type="checkbox" id="routeMode"> Marcar puntos en el mapa</label>
@@ -378,6 +386,7 @@
     </div>
     <button id="stopSim" class="link" style="margin-top:8px">Devolver GPS real</button>
   </div>
+ </div>
 </div>
 
 <dialog id="ask">
