@@ -259,6 +259,8 @@ Para usar otro AVD: `POGO_AVD=MiOtroAvd ./emulator.sh start`, o ponlo en `.env`.
 | Velocidad | Slider, o los presets Andar / Rapido / Bici |
 | Crear ruta | Marcar "Modo ruta" y hacer click en cada punto |
 | Recorrer ruta | Boton "Recorrer" |
+| Fijar un objetivo de km | Los botones de la seccion "Objetivo" |
+| Reiniciar el contador | "Poner el contador a cero" |
 | Guardar la ruta dibujada | Boton "Guardar ruta actual", y le pones nombre |
 | Recuperar una ruta guardada | Boton "Cargar" en la lista de rutas |
 | Pausar a mitad de ruta | Boton "Pausar", o la tecla `espacio` |
@@ -294,11 +296,38 @@ La rosa de los vientos marca el rumbo, no es solo un mando. Andando a mano lo
 saca del joystick; recorriendo una ruta, de la diferencia entre posiciones, que
 es cuando de verdad te interesa mirarla.
 
-La ruta actual, la velocidad, los lugares y las rutas guardadas viven en el
-navegador. Siguen ahi al reabrir.
+La ruta actual, la velocidad, los lugares, las rutas guardadas y el objetivo de
+distancia viven en el navegador. Siguen ahi al reabrir.
 
 Manda una coordenada por segundo, como un GPS real, con +-3 metros de ruido para
 que la traza no salga en linea geometrica perfecta.
+
+## Objetivo de distancia
+
+Aqui se anda por una razon: incubar huevos (2, 5, 7, 10 o 12 km) y el caramelo
+de compañero. La seccion **Objetivo** convierte el contador suelto en lo unico
+que quieres saber, cuanto falta.
+
+Eliges la distancia de tu huevo y la barra de escala te dice por donde vas:
+
+```
+OBJETIVO                                    10 km
+[ 2 ][ 5 ][ 7 ][ 10 ][ 12 ][ Ninguno ]
+[####################              ]
+Faltan 3.6 km, unos 48 min andando.
+```
+
+Detalles que importan:
+
+- **El progreso no se pierde al saltar.** El `dist` del servidor se reinicia
+  cada vez que colocas la posicion, asi que la web acumula los incrementos en
+  vez de leerlo tal cual. Un salto no te borra el huevo, igual que no te lo
+  borra el juego.
+- **Sobrevive a cerrar el navegador.** Incubar un huevo de 10 km lleva dias, no
+  una sesion. Vive en el `localStorage`.
+- **Por encima de 10.5 km/h se para**, y te dice que esta parado. Ver
+  [Velocidad](#velocidad).
+- **"Poner el contador a cero"** cuando eclosione, para el siguiente.
 
 ## Rutas guardadas
 
@@ -370,6 +399,11 @@ Hay dos formas de volver:
 Por encima de **10.5 km/h** el juego deja de contar la distancia. Para incubar
 huevos y el caramelo de compañero usa Andar (4.5) o Rapido (9). El preset Bici
 (15) sirve para desplazarte, no para acumular kilometros.
+
+La web lo refleja: el slider lleva una marca en 10.5, y al pasarla la velocidad
+se pone en rojo y el contador de distancia se para. **Se para de verdad, no solo
+avisa**, porque un contador que sume lo que el juego no suma es peor que no
+tener contador.
 
 ### Cooldown
 
@@ -485,8 +519,8 @@ sigues andando. Puedes recargarla a mitad de ruta y no se entera nadie.
 
 ### Lo que no sale de tu Mac
 
-Casa, los lugares, las rutas guardadas y la ruta actual viven en el
-`localStorage` del navegador.
+Casa, los lugares, las rutas guardadas, la ruta actual y el objetivo de
+distancia viven en el `localStorage` del navegador.
 No se commitean, no se mandan a ningun servidor y no se buscan en ningun
 geocodificador.
 

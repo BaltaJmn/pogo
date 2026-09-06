@@ -165,6 +165,31 @@
   .place .del:hover { color: var(--magenta); }
   .empty { font-size: 11.5px; color: var(--ink-3); padding: 2px 0 6px; }
 
+  /* --- barra de escala, el otro instrumento del margen de la carta --- */
+  .scale {
+    position: relative; height: 15px; margin-top: 9px; overflow: hidden;
+    background: #fff; border: 1px solid var(--ink); border-radius: 2px;
+  }
+  .scale-fill { height: 100%; background: var(--magenta); transition: width .45s ease; }
+  .scale-fill.done { background: var(--ink); }
+  .scale-fill.held { background: var(--ink-3); }
+  .scale i {
+    position: absolute; inset: 0; pointer-events: none; opacity: .3;
+    background: repeating-linear-gradient(90deg,
+      transparent 0, transparent calc(10% - 1px), var(--ink) calc(10% - 1px), var(--ink) 10%);
+  }
+  #goalOut { margin-top: 6px; }
+  #goalOut b { color: var(--ink); font-weight: 500; }
+
+  /* Marca de 10.5 km/h: por encima, el juego deja de contar distancia. */
+  .slider { position: relative; }
+  .slider::after {
+    content: ''; position: absolute; left: 51.3%; top: -3px; width: 1px; height: 6px;
+    background: var(--ink-3);
+  }
+  #kmhLabel.over { color: var(--magenta); }
+  #speedWarn { margin-top: 7px; color: var(--magenta); }
+
   /* --- cooldown: lo unico que puede gritar --- */
   .cool {
     display: flex; align-items: center; gap: 9px; text-align: left;
@@ -269,20 +294,38 @@
 
   <div class="read">
     <div class="coord none" id="posOut">sin posicion</div>
-    <div class="sub"><b id="distOut">0.00</b> km recorridos</div>
+    <div class="sub"><b id="distOut">0.00</b> km andados</div>
     <div class="sub hide" id="navOut"></div>
     <div id="status">listo</div>
     <div class="cool hide" id="cool"></div>
   </div>
 
   <div class="sec">
+    <div class="lab">Objetivo <span id="goalVal">sin objetivo</span></div>
+    <div class="seg" id="goalPick">
+      <button data-goal="2">2</button>
+      <button data-goal="5">5</button>
+      <button data-goal="7">7</button>
+      <button data-goal="10">10</button>
+      <button data-goal="12">12</button>
+      <button data-goal="0">Ninguno</button>
+    </div>
+    <div class="scale hide" id="goalBar"><div class="scale-fill" id="goalFill"></div><i></i></div>
+    <div class="sub" id="goalOut"></div>
+    <button id="goalReset" class="link hide" style="margin-top:6px">Poner el contador a cero</button>
+  </div>
+
+  <div class="sec">
     <div class="lab">Velocidad <span><b id="kmhLabel">4.5</b> km/h</span></div>
-    <input type="range" id="kmh" min="0.5" max="20" step="0.5" value="4.5" aria-label="Velocidad en km/h">
+    <div class="slider">
+      <input type="range" id="kmh" min="0.5" max="20" step="0.5" value="4.5" aria-label="Velocidad en km/h">
+    </div>
     <div class="seg">
       <button data-kmh="4.5">Andar</button>
       <button data-kmh="9">Rapido</button>
       <button data-kmh="15">Bici</button>
     </div>
+    <div class="sub hide" id="speedWarn">A mas de 10.5 km/h el juego no cuenta distancia.</div>
   </div>
 
   <div class="sec">
@@ -371,6 +414,13 @@ let navTarget = null;                   // hacia donde vamos andando, si vamos
 let routeIdx = 0;                       // por que punto de la ruta va el servidor
 let centered = false;                   // si ya encuadramos el mapa alguna vez
 let coolUntil = 0;                      // fin del cooldown, epoch ms
+let goal = 0;                           // objetivo en km (0 = ninguno)
+let goalDone = 0;                       // metros andados que cuentan para el objetivo
+let lastDist = 0;                       // ultimo `dist` visto del servidor
+
+// Por encima de esto el juego deja de contar distancia, asi que nosotros
+// tampoco: un contador que sume lo que el juego no suma es peor que no tenerlo.
+const CUENTA_MAX = 10.5;
 const keys = new Set();
 
 // El magenta es lo vivo: tu posicion, y la ruta mientras la recorres.
@@ -390,9 +440,15 @@ function metersBetween(a, b) {
   return 2 * R_EARTH * Math.asin(Math.sqrt(h));
 }
 const km = (m) => m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(1) + ' km';
-function clock(sec) {
+function clock(sec) {                    // cuenta atras que se mira tictaquear
   const m = Math.floor(sec / 60);
   return m + ':' + String(Math.floor(sec % 60)).padStart(2, '0');
+}
+function dur(sec) {                      // "cuanto me queda", que se lee de un vistazo
+  const m = Math.round(sec / 60);
+  if (m < 1) return 'menos de 1 min';
+  if (m < 60) return m + ' min';
+  return Math.floor(m / 60) + ' h ' + (m % 60) + ' min';
 }
 const endmode = () => document.querySelector('input[name=endmode]:checked').value;
 
@@ -434,7 +490,12 @@ setInterval(async () => {
     // Navegador limpio pero servidor ya andando: encuadra donde estas de verdad,
     // en vez de dejarte mirando el centro por defecto del mapa.
     if (!centered) { centered = true; map.setView([pos.lat, pos.lon], 17); }
-    el('distOut').textContent = (s.dist / 1000).toFixed(2);
+    // `dist` se reinicia cada vez que colocas la posicion, asi que acumulamos
+    // deltas en vez de leerlo tal cual: un salto no te borra el progreso del
+    // huevo, igual que no te lo borra en el juego.
+    if (s.dist > lastDist && +el('kmh').value <= CUENTA_MAX) goalDone += s.dist - lastDist;
+    lastDist = s.dist;
+    showGoal();
     routeIdx = s.idx || 0;
     if (walking !== s.walking) {         // la ruta puede acabarse sola
       walking = s.walking;
@@ -657,7 +718,7 @@ function updateNav() {
   if (!navTarget || !pos || !walking) { el('navOut').classList.add('hide'); return; }
   const left = metersBetween(pos, navTarget);
   const kmh = +el('kmh').value;
-  el('navOut').textContent = 'faltan ' + km(left) + ' . ' + clock(left / (kmh * 1000 / 3600));
+  el('navOut').textContent = 'faltan ' + km(left) + ' . ' + dur(left / (kmh * 1000 / 3600));
   el('navOut').classList.remove('hide');
 }
 
@@ -686,6 +747,54 @@ function tickCool() {
     + '<i>Cooldown. No captures ni gires paradas.</i>';
 }
 setInterval(tickCool, 1000);
+
+// --- objetivo de distancia ---------------------------------------------
+// Se anda por una razon: incubar huevos y caramelo de compañero. El contador
+// suelto no decia cuanto falta, que es lo unico que quieres saber.
+function showGoal() {
+  const over = +el('kmh').value > CUENTA_MAX;
+  el('distOut').textContent = (goalDone / 1000).toFixed(2);
+  el('kmhLabel').classList.toggle('over', over);
+  el('speedWarn').classList.toggle('hide', !over);
+  el('goalReset').classList.toggle('hide', goalDone < 1);
+
+  if (!goal) {
+    el('goalVal').textContent = 'sin objetivo';
+    el('goalBar').classList.add('hide');
+    el('goalOut').innerHTML = over
+      ? 'A esta velocidad no suma nada.'
+      : 'Elige la distancia de tu huevo y te digo cuanto falta.';
+    return;
+  }
+  const left = Math.max(0, goal * 1000 - goalDone);
+  el('goalVal').textContent = goal + ' km';
+  el('goalBar').classList.remove('hide');
+  el('goalFill').style.width = Math.min(100, goalDone / (goal * 10)) + '%';
+  el('goalFill').classList.toggle('done', left === 0);
+  el('goalFill').classList.toggle('held', left > 0 && over);
+  if (!left) {
+    el('goalOut').innerHTML = '<b>Objetivo cumplido.</b> Ponlo a cero para el siguiente.';
+  } else if (over) {
+    el('goalOut').innerHTML = 'Faltan <b>' + km(left) + '</b>, pero a '
+      + el('kmh').value + ' km/h el contador esta parado.';
+  } else {
+    el('goalOut').innerHTML = 'Faltan <b>' + km(left) + '</b>, unos '
+      + dur(left / (+el('kmh').value * 1000 / 3600)) + ' andando.';
+  }
+}
+
+function setGoal(v) {
+  goal = v;
+  document.querySelectorAll('[data-goal]').forEach((b) =>
+    b.classList.toggle('on', +b.dataset.goal === v));
+  showGoal(); save();
+}
+document.querySelectorAll('[data-goal]').forEach((b) =>
+  b.onclick = () => setGoal(+b.dataset.goal));
+el('goalReset').onclick = () => {
+  goalDone = 0; showGoal(); save();
+  setStatus('contador a cero');
+};
 
 // --- rutas guardadas ---------------------------------------------------
 const routeMeters = (pts) => pts.reduce((t, p, i) =>
@@ -840,6 +949,7 @@ el('kmh').oninput = (e) => { setKmh(e.target.value); send({ kmh: +e.target.value
 function setKmh(v) {
   el('kmh').value = v;
   el('kmhLabel').textContent = v;
+  showGoal();
   document.querySelectorAll('[data-kmh]').forEach((b) =>
     b.classList.toggle('on', b.dataset.kmh === String(v)));
 }
@@ -929,7 +1039,8 @@ setInterval(emuPoll, 3000);
 
 // --- persistencia ------------------------------------------------------
 const save = () => localStorage.setItem('joystick',
-  JSON.stringify({ route, kmh: el('kmh').value, pos, home, follow, places, routes, coolUntil }));
+  JSON.stringify({ route, kmh: el('kmh').value, pos, home, follow, places, routes,
+                   coolUntil, goal, goalDone, lastDist }));
 (function load() {
   try {
     const s = JSON.parse(localStorage.getItem('joystick') || '{}');
@@ -941,6 +1052,9 @@ const save = () => localStorage.setItem('joystick',
     places = s.places || [];
     routes = s.routes || [];
     coolUntil = s.coolUntil || 0;       // el cooldown sobrevive a recargar la pestaña
+    goalDone = s.goalDone || 0;         // incubar un huevo lleva dias, no una sesion
+    lastDist = s.lastDist || 0;
+    setGoal(s.goal || 0);
     drawRoute();
     renderPlaces();
     renderRoutes();
