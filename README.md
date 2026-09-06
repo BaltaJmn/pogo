@@ -156,9 +156,9 @@ lejana, ese salto tambien tiene cooldown antes de poder hacer acciones.
 
 ## Reglas de Pokemon GO
 
-> Hoy el juego no arranca con la ubicacion simulada, ver
-> [Estado](#estado-pokemon-go-no-funciona). Lo de abajo queda como referencia
-> por si algun dia vuelve a valer.
+> Esto aplica jugando desde el emulador de Android, que es donde funciona. Desde
+> iPhone da igual, el juego ni arranca, ver
+> [Estado](#estado-en-iphone-no-en-emulador-de-android-si).
 
 ### Velocidad
 
