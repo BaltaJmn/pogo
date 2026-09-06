@@ -479,3 +479,71 @@ sintomas.
 Queda por atribuir por que no se instancia. El emulador esta capado a
 `OpenGL ES 3.0 (4.1 Metal - 90.5)` con `ANDROID_EMU_gles_max_version_3_0`, y el
 avatar nuevo de Niantic es bastante mas pesado que el resto del mapa.
+
+### 2026-09-06, tarde 3: la causa raiz es OpenGL, no el GPS
+
+El log del propio juego, filtrando por su PID:
+
+```
+E GFXSTREAM: [egl.cpp(1800)] EGL_BAD_CONFIG: no ES 3.2 support
+E GFXSTREAM: [egl.cpp(1794)] EGL_BAD_CONFIG: no ES 3.1 support
+E GFXSTREAM: [egl.cpp(1220)] error 0x3004 (EGL_BAD_ATTRIBUTE)
+```
+
+Pokemon GO pide un contexto OpenGL ES 3.2, luego 3.1, y el emulador le niega los
+dos. Cae a 3.0. Por eso no se dibuja el avatar y por eso la barra de objetos sale
+con siluetas negras en vez de iconos de pokemon. Nada que ver con la ubicacion.
+
+Por que esta capado:
+
+```
+GLES: Google (Apple), Android Emulator OpenGL ES Translator (Apple M2 Pro),
+      OpenGL ES 3.0 (4.1 Metal - 90.5)
+```
+
+El traductor GL del emulador se apoya en el OpenGL del host. macOS lo deja en
+4.1, y ES 3.1 necesita 4.3. Camino muerto. Lo dice hasta el fichero de features
+del propio emulador, en `emulator/lib/advancedFeatures.ini`:
+
+> For example, OS X is not known to support GLES 3.1.
+
+**Intento: ANGLE sobre Vulkan.** La imagen si trae ANGLE
+(`/system/lib64/libEGL_angle.so`) y el HAL de Vulkan (`vulkan.ranchu.so`), pero
+la feature `Vulkan` viene apagada de fabrica. Activada en
+`~/.android/advancedFeatures.ini`:
+
+```
+Vulkan = on
+GLDirectMem = on
+```
+
+y el emulador relanzado fuera de Android Studio:
+
+```
+~/Library/Android/sdk/emulator/emulator -avd Medium_Phone_2 \
+  -feature Vulkan,GLDirectMem -gpu host
+```
+
+Con ANGLE forzado solo para el juego (`settings put global
+angle_gl_driver_selection_pkgs com.nianticlabs.pokemongo`), ANGLE arranca de
+verdad y desaparecen los `EGL_BAD_CONFIG`:
+
+```
+I ANGLE: Version (2.1 ...), Renderer (Vulkan 1.3.0 (Goldfish GFXStream (Apple M2 Pro)))
+```
+
+Pero el juego no llega al mapa. Primero un aviso de Unity, `Your device does not
+match the hardware requirements of this application`, y tras darle a Continue:
+
+```
+Error
+Unable to initialize the Unity Engine Graphics API.
+```
+
+Asi que ANGLE queda descartado: el Unity de Pokemon GO no arranca contra el.
+Ajuste revuelto con `settings delete`. La feature `Vulkan` se queda puesta,
+porque ahora que el HAL responde, Unity puede elegir Vulkan el solo, que es la
+via que queda por probar.
+
+Para deshacerlo todo: borrar `~/.android/advancedFeatures.ini` y reiniciar el
+emulador.
