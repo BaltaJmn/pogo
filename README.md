@@ -588,3 +588,40 @@ E GFXSTREAM: [egl.cpp(1794)] EGL_BAD_CONFIG: no ES 3.1 support
 **Observacion nueva sin explicar todavia:** en el mapa aparece una cadena de Pokemon identicos dibujados enormes en la zona baja de la pantalla, justo donde deberia estar el avatar. Sospecha: son spawns acumulados en la posicion del jugador (incienso) tapando el avatar, no un fallo de render.
 
 **Estado:** la investigacion vuelve al lado de la localizacion y del estado del juego, no del GPU.
+
+### 2026-09-06, tarde 6: RESUELTO, el avatar necesita OpenGL ES 3.1
+
+- Se retira la correccion de la seccion "tarde 5". Estaba equivocada. La causa raiz SI era el cap de OpenGL ES 3.0.
+- Por que despisto: el juego renderiza perfectamente en ES 3.0 (Pokemon, mapa, gimnasios, efectos, HUD). Lo unico que no se dibuja es el avatar del entrenador. Se comprobo que tampoco aparece en la pantalla de perfil, ni esperando 30 segundos, asi que no era carga lenta ni un problema de camara.
+- La pista que faltaba: el avatar es la unica cosa del juego que necesita algo que ES 3.0 no da.
+- La solucion: el modo de GPU "swangle" del emulador, que es ANGLE con backend SwiftShader. Expone OpenGL ES 3.1 al guest.
+- Comando que funciona:
+
+```sh
+~/Library/Android/sdk/emulator/emulator -avd Medium_Phone_2 -gpu swangle -no-snapshot-load
+```
+
+- Antes, con -gpu host:
+
+```
+GLES: Google (Apple), Android Emulator OpenGL ES Translator (Apple M2 Pro), OpenGL ES 3.0 (4.1 Metal - 90.5)
+ro.opengles.version = 196608
+```
+
+- Despues, con -gpu swangle:
+
+```
+GLES: Google (Google Inc. (Google)), Android Emulator OpenGL ES Translator (ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver-5.0.0)), OpenGL ES 3.1 (OpenGL ES 3.1.0 (ANGLE 2.1.1 git hash: fbf66f49c7cc))
+ro.opengles.version = 196609
+```
+
+- En logcat ya solo queda el aviso de ES 3.2, el de ES 3.1 desaparece:
+
+```
+E GFXSTREAM: [egl.cpp(1800)] EGL_BAD_CONFIG: no ES 3.2 support
+```
+
+- Resultado: el avatar del entrenador aparece en el mapa y tambien en el icono del HUD abajo a la izquierda.
+- Contrapartida: SwiftShader renderiza por CPU, asi que va mas lento y las texturas se ven con ruido.
+- Nota de metodo: el emulador se arranco con -no-snapshot-load a la vez que se cambio el modo de GPU, asi que en rigor cambiaron dos cosas. La evidencia apunta al modo de GPU, porque con ES 3.0 el avatar falto en decenas de arranques de la app, incluidos arranques en frio.
+- Lista completa de modos de GPU del emulador, de "emulator -help-gpu": auto, host, software, lavapipe, swiftshader, swangle.
