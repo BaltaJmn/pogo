@@ -35,7 +35,7 @@
   #side {
     width: 320px; flex: none; display: flex; flex-direction: column;
     background: var(--panel); border-left: 1px solid var(--rule);
-    padding: 18px 20px 14px;
+    padding: 18px 20px 14px; overflow-y: auto;
   }
 
   /* --- bloque de titulo, como el de una carta --- */
@@ -51,7 +51,7 @@
   .meta b { color: var(--ink); font-weight: 500; }
 
   /* --- rosa de los vientos --- */
-  .rose { display: grid; place-items: center; padding: 20px 0 14px; }
+  .rose { display: grid; place-items: center; padding: 16px 0 12px; }
   #pad {
     width: clamp(160px, 44vw, 204px); aspect-ratio: 1; position: relative;
     touch-action: none; cursor: grab;
@@ -85,7 +85,7 @@
   #status.warn { color: var(--magenta); }
 
   /* --- secciones --- */
-  .sec { padding-top: 14px; }
+  .sec { padding-top: 12px; }
   .lab {
     display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
     font: 600 10px/1 var(--cond); letter-spacing: .16em; text-transform: uppercase;
@@ -128,7 +128,7 @@
   .check:hover { color: var(--ink); }
 
   /* --- pie --- */
-  .foot { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--rule); }
+  .foot { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--rule); }
   .hint { font-size: 11.5px; color: var(--ink-3); line-height: 1.5; }
   .hint kbd {
     font: 400 10px var(--mono); background: #fff; border: 1px solid var(--rule);
@@ -167,11 +167,12 @@
 
   /* --- cooldown: lo unico que puede gritar --- */
   .cool {
-    margin-top: 10px; padding: 8px 10px; border-radius: 3px;
+    display: flex; align-items: center; gap: 9px; text-align: left;
+    margin-top: 9px; padding: 7px 10px; border-radius: 3px;
     background: var(--magenta); color: #fff;
   }
-  .cool b { font: 500 15px var(--mono); }
-  .cool i { display: block; font: 400 11px/1.4 var(--sans); font-style: normal; opacity: .9; }
+  .cool b { font: 500 16px/1 var(--mono); }
+  .cool i { font: 400 10.5px/1.3 var(--sans); font-style: normal; opacity: .92; }
 
   /* --- popup de accion en el mapa --- */
   .leaflet-popup-content-wrapper { border-radius: 3px; box-shadow: 0 2px 12px rgba(22, 35, 58, .25); }
@@ -411,7 +412,8 @@ const CARD = [['N', 0], ['E', 90], ['S', 180], ['O', 270]];
     '<svg viewBox="0 0 200 200" aria-hidden="true">' + s + '</svg>');
 })();
 
-const radius = () => pad.clientWidth / 2 - knob.offsetWidth / 2;
+// -5 para que la aguja a tope no se coma las letras cardinales
+const radius = () => pad.clientWidth / 2 - knob.offsetWidth / 2 - 5;
 
 function bearing(x, y) { return (Math.atan2(x, y) * 180 / Math.PI + 360) % 360; }
 
@@ -512,13 +514,19 @@ function askWhat(p) {
     map.closePopup(pop);
     if (a === 'walk') walkTo(p); else jumpTo(p);
   });
-  form.onsubmit = (ev) => {
-    ev.preventDefault();
-    const name = form.querySelector('input').value.trim();
+  const input = form.querySelector('input');
+  const store = () => {
+    const name = input.value.trim();
     if (!name) return;
     places.push({ name, lat: p.lat, lon: p.lon });
     renderPlaces(); save(); map.closePopup(pop);
     setStatus('guardado: ' + name);
+  };
+  form.onsubmit = (ev) => { ev.preventDefault(); store(); };
+  // Leaflet se come el submit implicito dentro del popup, asi que Enter a mano.
+  input.onkeydown = (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); store(); }
+    if (ev.key === 'Escape') map.closePopup(pop);
   };
 }
 
@@ -582,7 +590,7 @@ function tickCool() {
   if (left <= 0) { box.classList.add('hide'); return; }
   box.classList.remove('hide');
   box.innerHTML = '<b>' + clock(left) + '</b>'
-    + '<i>Cooldown. No captures, no gires paradas, no abras regalos.</i>';
+    + '<i>Cooldown. No captures ni gires paradas.</i>';
 }
 setInterval(tickCool, 1000);
 
@@ -599,8 +607,8 @@ function renderPlaces() {
     L.circleMarker([p.lat, p.lon], { radius: 4, color: '#16233a', weight: 1.5,
       fillColor: '#d7e5ea', fillOpacity: 1 }).bindTooltip(p.name).addTo(spots);
     const row = L.DomUtil.create('div', 'place', box);
-    const d = pos ? '<em>' + km(metersBetween(pos, p)) + '</em>' : '';
-    row.innerHTML = '<button class="name">' + esc(p.name) + d + '</button>'
+    const d = pos ? km(metersBetween(pos, p)) : '';
+    row.innerHTML = '<button class="name">' + esc(p.name) + '<em>' + d + '</em></button>'
       + '<button class="go" data-a="walk">Andar</button>'
       + '<button class="go" data-a="jump">Saltar</button>'
       + '<button class="del" title="Borrar">x</button>';

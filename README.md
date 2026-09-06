@@ -253,13 +253,17 @@ Para usar otro AVD: `POGO_AVD=MiOtroAvd ./emulator.sh start`, o ponlo en `.env`.
 
 | Accion | Como |
 |---|---|
-| Fijar posicion | Click en el mapa (con "Modo ruta" desactivado) |
-| Mover | Arrastrar el circulo azul, o `WASD` / flechas |
+| Elegir que hacer con un punto | Click en el mapa (con "Modo ruta" desactivado) |
+| Mover | Arrastrar la aguja de la rosa, o `WASD` / flechas |
 | Velocidad | Slider, o los presets Andar / Rapido / Bici |
 | Crear ruta | Marcar "Modo ruta" y hacer click en cada punto |
 | Recorrer ruta | Boton "Recorrer" |
 | Fin de ruta | Bucle, Ida y vuelta, o Parar |
-| Fijar casa | Boton "Fijar casa aqui", con la posicion puesta en tu portal |
+| Guardar un lugar | Click en el mapa, "Guardar", y le pones nombre |
+| Guardar donde estas | Boton "Guardar esta posicion" |
+| Ir andando a un sitio | "Ir andando" en el mapa, o "Andar" en la lista de lugares |
+| Saltar a un sitio | "Saltar aqui" en el mapa, o "Saltar" en la lista |
+| Fijar casa | Boton "Fijar aqui", con la posicion puesta en tu portal |
 | Volver a casa | Boton "Ir a casa" |
 | Centrar el mapa | Boton "Centrar aqui" |
 | Que el mapa te siga | Boton "Seguir" (se queda activado) |
@@ -270,10 +274,40 @@ El mapa no persigue al marcador por defecto: si lo arrastras para mirar otra
 zona, no te lo devuelve al sitio en el siguiente sondeo. "Seguir" activa el
 perseguimiento cuando lo quieras.
 
-La ruta y la velocidad se guardan en el navegador. Siguen ahi al reabrir.
+**Un click en el mapa ya no te teletransporta de golpe.** Sale un globo con las
+tres cosas que puedes querer hacer con ese punto: ir andando, saltar, o
+guardarlo con nombre. Saltar tiene cooldown y casi nunca es lo que quieres, asi
+que ya no es lo que pasa por defecto.
+
+La rosa de los vientos marca el rumbo, no es solo un mando. Andando a mano lo
+saca del joystick; recorriendo una ruta, de la diferencia entre posiciones, que
+es cuando de verdad te interesa mirarla.
+
+La ruta, la velocidad y los lugares se guardan en el navegador. Siguen ahi al
+reabrir.
 
 Manda una coordenada por segundo, como un GPS real, con +-3 metros de ruido para
 que la traza no salga en linea geometrica perfecta.
+
+## Lugares
+
+Sitios guardados con nombre, para no tener que buscarlos en el mapa cada vez.
+
+Para guardar uno: click en el mapa, "Guardar", y le pones nombre. O el boton
+"Guardar esta posicion", que guarda donde estes ahora.
+
+Cada lugar de la lista tiene dos botones, y la diferencia importa:
+
+- **Andar**: te pone a caminar hacia alli a la velocidad que tengas puesta, y
+  para al llegar. Por dentro es una ruta de dos puntos con "Parar" al final, o
+  sea que reemplaza la ruta que tuvieras dibujada. Mientras vas, debajo de las
+  coordenadas te dice cuanto falta y cuanto tarda.
+- **Saltar**: teletransporte. Instantaneo, pero **dispara cooldown**.
+
+Click en el nombre centra el mapa ahi sin mover nada.
+
+Los lugares viven en el `localStorage` del navegador, igual que casa. **No se
+guardan en el repo ni se mandan a ningun sitio.**
 
 ## Punto de partida (casa)
 
@@ -284,8 +318,8 @@ sesiones.
 Una sola vez:
 
 1. Busca tu portal en el mapa y haz zoom.
-2. Haz click encima, con "Modo ruta" desactivado.
-3. Pulsa "Fijar casa aqui".
+2. Haz click encima, con "Modo ruta" desactivado, y pulsa "Saltar aqui".
+3. Pulsa "Fijar aqui" en la seccion Casa.
 
 Se guarda en el `localStorage` del navegador. **No se guarda en el repo ni se
 manda a ningun servidor**: tu direccion no sale de tu Mac. Si borras los datos
@@ -329,6 +363,12 @@ Moverse y mirar el mapa no cuenta. Solo cuentan las acciones.
 
 El joystick a velocidad de andar no dispara cooldown. Saltar de ciudad si.
 
+**La web lleva la cuenta sola.** Cada vez que saltas (click en el mapa y "Saltar
+aqui", "Saltar" en un lugar, o "Ir a casa") mide el salto, busca en esa tabla y
+saca un contador rojo con el tiempo que queda. Sobrevive a recargar la pestaña,
+porque el cooldown no lo lleva el juego, lo llevas tu. Andando no aparece: andar
+no dispara nada.
+
 ### Higiene
 
 - Cuenta PTC desechable, nunca la principal.
@@ -341,18 +381,64 @@ El joystick a velocidad de andar no dispara cooldown. Saltar de ciudad si.
 
 ## Como funciona
 
-- `spoof.py`: abre el tunel RemoteXPC con el movil usando el `remotepairingd` de
-  macOS (sin root), monta la DeveloperDiskImage si no lo esta, y sirve una API
-  local. Tambien lleva el movimiento: un bucle propio avanza la posicion e
-  inyecta un fix por segundo, la cadencia de un GPS real. En iPhone via
-  `LocationSimulation` de DVT, en emulador via `adb emu geo fix`.
-- `index.html`: el mapa, el joystick y el editor de rutas. Solo manda la
-  intencion con `POST /loc` (`vx`, `vy`, `kmh`, `route`, `walking`...) y sondea
-  `GET /pos` para pintar. No calcula movimiento.
+### La idea, en una frase
 
-El bucle esta en el servidor a proposito. Chrome estrangula los temporizadores de
-una pestaña oculta, y para mirar el juego tienes que tapar el navegador. Asi
-sigues andando aunque cierres la pestaña.
+El juego no sabe donde estas. Sabe lo que le cuenta el sistema operativo. Este
+proyecto le miente al sistema operativo, y el juego se lo cree porque no tiene
+forma de distinguirlo.
+
+Ahi esta la diferencia entre el emulador y el iPhone, y es toda la historia del
+proyecto: en el emulador la mentira entra por el mismo sitio por el que entraria
+un GPS de verdad, asi que es indistinguible. En iOS entra por una puerta lateral
+que deja marca, y Niantic mira la marca. Por eso este repo acabo en Android.
+
+### Que pasa cuando arrastras la aguja
+
+1. **El navegador no mueve nada.** Manda una intencion: `POST /loc` con `vx` y
+   `vy`, que es "hacia el noreste", no "ponme en estas coordenadas". Y para de
+   hablar.
+2. **`spoof.py` tiene un bucle que despierta una vez por segundo.** Mira la
+   ultima intencion que le llego, calcula cuantos metros das en un segundo a la
+   velocidad que tengas puesta, y mueve la posicion esos metros.
+3. **Le suma ruido de +-3 metros.** Un GPS real nunca da dos lecturas identicas.
+   Una traza perfectamente recta y perfectamente regular no la produce ningun
+   telefono.
+4. **Inyecta la coordenada.** En el emulador, `adb emu geo fix <lon> <lat>`. En
+   iPhone, el canal DVT de Xcode.
+5. **Android se la entrega a las apps como si viniera de un satelite.** No hay
+   "mock location" de por medio, no hace falta root, y no hay bandera que
+   delate nada: `geo fix` alimenta el GPS emulado, que para ese Android es el
+   unico GPS que existe.
+6. **Aparte, el navegador pregunta `GET /pos` una vez por segundo**, solo para
+   pintar el mapa y la rosa. Si dejas de preguntar, no pasa nada: tu seguirias
+   andando igual.
+
+### Por que el bucle vive en el servidor y no en el navegador
+
+Porque para mirar el juego tienes que tapar el navegador, y Chrome estrangula
+los temporizadores de las pestañas ocultas. Con el bucle en la pagina, andabas a
+tirones o directamente parabas al cambiar de ventana.
+
+Con el bucle en `spoof.py` la pagina es un mando y un espejo: si la cierras,
+sigues andando. Puedes recargarla a mitad de ruta y no se entera nadie.
+
+### Las piezas
+
+| Fichero | Que hace |
+|---|---|
+| `spoof.py` | El servidor. Lleva el movimiento, inyecta la posicion y sirve la web. Todo el estado vive aqui |
+| `index.html` | El mando: mapa, rosa de los vientos, rutas y lugares. No calcula movimiento, solo manda intenciones y pinta |
+| `emulator.sh` | Arranca el emulador con la configuracion que hace jugable al juego, y la repara si se perdio |
+| `avd/` | La definicion del emulador, por si lo borras |
+| `test_spoof.py` | Los 8 tests del calculo de movimiento |
+
+### Lo que no sale de tu Mac
+
+Casa, los lugares guardados y la ruta viven en el `localStorage` del navegador.
+No se commitean, no se mandan a ningun servidor y no se buscan en ningun
+geocodificador. El UDID del iPhone vive en `.env`, que esta en `.gitignore`.
+
+Este repo es publico. Esa es justo la razon.
 
 ## Problemas
 
