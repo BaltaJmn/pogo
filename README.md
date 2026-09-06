@@ -348,6 +348,33 @@ Cada ruta de la lista muestra lo que mide y trae dos cosas:
 Cargar una ruta la deja siempre en el punto 1, aunque vinieras de una pausa a
 mitad de otra.
 
+### Por calles
+
+Marcar cuatro puntos a ojo te hace atravesar manzanas en linea recta. El boton
+"Por calles" pasa los puntos que tengas marcados por Valhalla, el enrutador de
+OpenStreetMap (<https://valhalla1.openstreetmap.de/route>), con perfil
+"pedestrian", y sustituye la ruta por la linea entera que devuelve, calle a calle.
+
+En una prueba real en Cordoba con 3 puntos: 1.831 m en linea recta contra 2.389
+m por calles. Se eligio Valhalla y no OSRM porque el servidor publico de OSRM
+solo tiene grafo de coche, y para el mismo tramo daba 1.979 m evitando lo
+peatonal. El precio de Valhalla es decodificar una polilinea de precision 6:
+catorce lineas de codigo, verificadas contra el total que reporta el propio
+Valhalla. 2.389 m decodificados contra 2.389 m reportados, sin discrepancia.
+
+Aviso importante: valhalla1.openstreetmap.de lo mantiene la comunidad y no tiene
+garantia de servicio. Si falla, la ruta se queda como estaba y el estado lo dice.
+
+**No se puede ajustar mientras la ruta esta andando.** Hay que pararla antes:
+el boton "Pausar" te deja quieto sin perder por donde ibas, luego ajusta y sigue
+de ahi.
+
+### Etiqueta de la ruta
+
+La etiqueta debajo del boton "Recorrer" ahora dice lo que mide. Por ejemplo:
+"3 puntos . 1.8 km". Con el modo "Bucle" ese numero es el que indica cuantas
+vueltas hacen falta para el huevo.
+
 ## Buscar sitio
 
 Caja de busqueda encima del mapa, justo bajo los botones "Centrar" y "Seguir".
@@ -364,6 +391,19 @@ desde el navegador.
 tecleas. Es a proposito: la politica de Nominatim pide como mucho una peticion por
 segundo, y buscar al enviar sale gratis en codigo comparado con montar un debounce
 o un apaño similar.
+
+### Coordenadas pegadas
+
+Google Maps te da una pokeparada como "37.881994, -4.768207". Pegarlo en la caja
+de busqueda y que se lo tire a un geocodificador no tiene sentido: ya es la
+respuesta.
+
+El buscador lo detecta automaticamente. Si lo que escribes son dos numeros validos
+(latitud y longitud), no consulta a Nominatim: ya es el resultado. Sale directamente
+como candidato, con su "Andar" y su "Saltar", sin hacer peticion a la red.
+
+Acepta coma, punto y coma o solo un espacio entre los dos numeros. Latitud primero,
+como lo escribe Google Maps.
 
 Los resultados se sesgan hacia el trozo de mapa que estas viendo, pasando el
 "viewbox" de Leaflet al geocodificador. Como no se pone `bounded=1`, si el sitio
@@ -426,6 +466,16 @@ Nominatim (magenta) ni con los lugares guardados. Click en cualquier candidato a
 el mismo popup que un click en el mapa, con los botones "Andar", "Saltar" y "Guardar".
 Si el sitio tiene nombre en OpenStreetMap, el campo de guardar viene ya relleno con el.
 
+## Radio de accion
+
+Un circulo de 40 metros alrededor de tu posicion, dibujado en metros de verdad y no
+en pixeles. Encoge y crece con el zoom, asi que ve siempre a escala real.
+
+40 metros es justo la distancia a la que el juego te deja girar una parada o entrar
+a un gimnasio. Junto a los candidatos de Overpass, el mapa deja de ser un selector
+de puntos y pasa a servir para planificar: ves de un vistazo si llegas a tocar
+cada candidato desde donde estas, sin necesidad de ampliar cada uno.
+
 ## Lugares
 
 Sitios guardados con nombre, para no tener que buscarlos en el mapa cada vez.
@@ -483,6 +533,13 @@ se pone en rojo y el contador de distancia se para. **Se para de verdad, no solo
 avisa**, porque un contador que sume lo que el juego no suma es peor que no
 tener contador.
 
+**La velocidad que manda es la del servidor**, no la del slider. Con dos pestañas
+abiertas se desincronizaban: una cambiaba el slider, pero la otra seguia con la
+velocidad anterior, y el "faltan X, unos Y andando" mentia. Ahora el sondeo
+sincroniza el slider con el servidor una vez por segundo, salvo mientras lo estas
+arrastrando: mientras lo tocas vale tu version, para que no te pelee el ratón
+con las actualizaciones de la red.
+
 ### Cooldown
 
 Tras un salto grande de ubicacion, NO hagas ninguna accion (capturar, girar
@@ -525,6 +582,11 @@ hasta que le das a "Saltar" ahi. Escape o "Cancelar" y no ha pasado nada.
 Si el salto es de menos de 1 km, el dialogo lo dice: "Salto corto, no genera
 cooldown". Sale igual, para que la distincion la veas tu y no tengas que
 acordarte de la tabla.
+
+**El dialogo avisa tambien si ya hay un cooldown corriendo** del salto anterior,
+con lo que queda. Saltar encima de un cooldown abierto es justo lo que hay que
+evitar: te comes un soft ban. Antes solo decia el cooldown que ibas a provocar,
+no el que todavia estaba pasando.
 
 Andar no pregunta nada: no cuesta cooldown, asi que no hay nada que confirmar.
 
@@ -591,7 +653,7 @@ sigues andando. Puedes recargarla a mitad de ruta y no se entera nadie.
 | `spoof.py` | El servidor. Lleva el movimiento, inyecta la posicion y sirve la web. Todo el estado vive aqui |
 | `test_spoof.py` | Los 9 tests del calculo de movimiento |
 | `run.sh` | Lo que arrancas. Levanta `spoof.py` con las dependencias que encuentre |
-| `index.html` | El mando: mapa, rosa de los vientos, rutas, lugares, buscador de Nominatim y candidatos de Overpass. No calcula movimiento, solo manda intenciones y pinta |
+| `index.html` | El mando: mapa con radio de 40 m, rosa de los vientos, rutas (con boton "Por calles"), lugares, buscador de Nominatim, coordenadas pegadas y candidatos de Overpass. No calcula movimiento, solo manda intenciones y pinta |
 | `emulator.sh` | Arranca el emulador con la configuracion que hace jugable al juego, y la repara si se perdio |
 | `avd/` | La definicion del emulador, por si lo borras |
 
