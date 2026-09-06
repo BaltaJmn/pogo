@@ -9,6 +9,25 @@ desarrollador de iOS (DVT), el mismo que usa Xcode para simular ubicacion.
 
 Probado en: macOS + iPhone XR con iOS 18.6.2, conectado por wifi.
 
+## Estado: Pokemon GO no funciona
+
+Probado el 2026-09-06 en iPhone XR con iOS 18.6.2. Nada mas abrir el juego sale
+"Failed to detect location (12)". La distancia da igual: falla tambien con la
+coordenada puesta a 100 metros de la posicion real.
+
+En iOS 17 en adelante el unico canal para inyectar posicion es
+`com.apple.instruments.server.services.LocationSimulation`, el mismo que usa
+Xcode en Debug > Simulate Location. CoreLocation marca esas posiciones con
+`CLLocation.sourceInformation.isSimulatedBySoftware = true`. La marca la pone
+`locationd`: no viaja en lo que mandamos nosotros y no se puede quitar desde el
+Mac. Apple Maps no la consulta, por eso te sigue. Niantic si.
+
+Saltarselo pide jailbreak o binario del juego modificado, las dos cosas fuera de
+lo que hace este repo. El iPhone XR es A12, asi que checkm8 tampoco aplica.
+
+El resto sigue funcionando: Apple Maps y cualquier app que no mire esa marca.
+El detalle de lo probado esta en [Registro de intentos](#registro-de-intentos).
+
 ## Aviso
 
 Falsear la ubicacion viola los terminos de servicio de Niantic. El sistema de
@@ -120,6 +139,10 @@ lejana, ese salto tambien tiene cooldown antes de poder hacer acciones.
 
 ## Reglas de Pokemon GO
 
+> Hoy el juego no arranca con la ubicacion simulada, ver
+> [Estado](#estado-pokemon-go-no-funciona). Lo de abajo queda como referencia
+> por si algun dia vuelve a valer.
+
 ### Velocidad
 
 Por encima de **10.5 km/h** el juego deja de contar la distancia. Para incubar
@@ -210,3 +233,45 @@ Boton "Devolver GPS real". Si no, reinicia el movil.
 ```sh
 ./run.sh --port 9000
 ```
+
+## Registro de intentos
+
+Lo probado y como acabo, para no repetir callejones sin salida entre sesiones.
+
+### 2026-09-06
+
+**Entorno verificado.** pymobiledevice3 11.5.0, uvicorn 0.52.4, starlette 1.6.0.
+Todas las APIs que usa `spoof.py` existen con la firma esperada. El tunel nativo
+y `POST /loc` funcionan contra el iPhone XR (`iPhone11,8`) y contra el iPhone 16
+Pro (`iPhone17,1`). El backend no falla en nada.
+
+**Descartado: el Modo Desarrollador y la DeveloperDiskImage.** Con el tunel
+abierto y la DDI montada, pero sin inyectar ninguna coordenada, Pokemon GO entra
+sin error. Lo que detecta es la coordenada, no el entorno de desarrollo.
+
+**Descartado: incoherencia entre GPS e IP u operadora.** Coordenada puesta a unos
+100 metros de la posicion real, misma wifi y misma cobertura: error 12 igual, al
+instante. No es un control de distancia ni de coherencia con la red.
+
+**Descartado: el servicio antiguo `com.apple.dt.simulatelocation`.** Es un canal
+lockdown distinto al de Instruments, y ademas la posicion aguanta con la sesion
+cerrada, asi que valia la pena mirarlo. Apple lo quito en iOS 17:
+
+```
+pymobiledevice3.exceptions.InvalidServiceError: No such service: com.apple.dt.simulatelocation
+```
+
+Se probo con un flag `--service dt` en `spoof.py`, revertido despues para no
+dejar codigo muerto.
+
+**Descartado sin escribir codigo: una app de iOS propia que haga de joystick.**
+No sirve. El sandbox de iOS no deja que una app inyecte ubicacion en otra, no
+existe el equivalente al mock location provider de Android. La marca la pone
+`locationd` para todo el sistema mientras la simulacion esta activa, asi que una
+app propia leeria la posicion igual de marcada. Lo unico que aportaria es
+diagnostico: leer `CLLocation.sourceInformation.isSimulatedBySoftware` y medir lo
+que aqui esta deducido por descarte. No abre ninguna via nueva.
+
+**Conclusion.** Con iPhone sin jailbreak y app sin modificar no hay salida por
+esta via. Lo unico que quedaria es portarlo a Android con root y ocultacion de
+mock location, que es otro proyecto.
