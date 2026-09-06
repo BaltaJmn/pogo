@@ -430,3 +430,52 @@ t=20  {"lat":37.885835,"lon":-4.765242,"dist":23.75}
 el movil es el ruido GPS de +-3 m. `test_spoof.py` cubre el motor: velocidad,
 medio gas, zona muerta, bucle, ida y vuelta, modo parar y ruta con puntos
 repetidos.
+
+### 2026-09-06, tarde 2: la camara no sigue y el avatar no se dibuja
+
+Dos sintomas que resultan ser el mismo problema. Registro de lo probado.
+
+**Descartado: no es la entrega del sistema.** Google Maps si sigue en vivo.
+Punto azul quieto en el centro de pantalla y el mapa desplazandose debajo: 72
+metros al este en 60 segundos, medido comparando etiquetas entre las dos
+capturas (Carrefour de x=560 a x=525, PARQUE FIDIANA de 458 a 420). Andando a
+4.5 km/h, exactamente lo pedido. El GPS emulado entrega bien a 1 Hz.
+
+**Descartado: no es falta de datos en el fix.** `adb emu geo fix` acepta mas
+parametros de los que mandabamos:
+
+```
+geo fix <longitude> <latitude> [<altitude> [<satellites> [<velocity>]]]
+```
+
+Probado a mano, 90 fixes de un segundo con altitud, 12 satelites y 2.43 nudos:
+
+```
+Location[gps 37.878998,-4.778118 hAcc=5.0 alt=100.0 vel=1.250099 bear=0.0
+         {Bundle[{satellites=0, maxCn0=0, meanCn0=0}]}]
+```
+
+La altitud y la velocidad llegan (2.43 nudos son 1.25 m/s, la velocidad de
+andar). El contador de satelites lo ignora el emulador y `bear` sigue a 0 en el
+proveedor `gps`, aunque el `fused` se calcula el rumbo solo. Con todo eso, tras
+112 metros el juego seguia con los mismos pokestops en los mismos pixeles. La
+hipotesis del fix incompleto era falsa.
+
+**Confirmado: el cliente si acepta saltos grandes.** Teletransporte de 2 km con
+la app en primer plano: a los 20 segundos el mapa esta en el sitio nuevo, con su
+buddy y su circulo de interaccion. O sea, el juego escucha las actualizaciones
+mientras corre. Lo que ignora es el movimiento a escala de paseo: 75 metros en
+60 segundos dan una captura identica pixel a pixel salvo el temporizador de la
+incursion.
+
+**La pista buena: el avatar no existe.** El buddy (un Kirlia) se dibuja solo en
+mitad del cesped, sin muñeco ni sombra al lado. Y el circulo de interaccion se
+queda clavado en el mismo punto de pantalla. En Pokemon GO la camara sigue al
+avatar; si el avatar no llega a instanciarse, la camara no tiene a quien seguir,
+y solo se recoloca cuando algo fuerza un recentrado completo, que es justo lo que
+hacen el arranque de la app y el salto de 2 km. Un unico fallo explica los dos
+sintomas.
+
+Queda por atribuir por que no se instancia. El emulador esta capado a
+`OpenGL ES 3.0 (4.1 Metal - 90.5)` con `ANDROID_EMU_gles_max_version_3_0`, y el
+avatar nuevo de Niantic es bastante mas pesado que el resto del mapa.
