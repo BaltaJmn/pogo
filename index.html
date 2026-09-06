@@ -320,6 +320,7 @@ let follow = false;                     // si el mapa persigue al marcador
 let places = [];                        // lugares guardados, solo en localStorage
 let navTarget = null;                   // hacia donde vamos andando, si vamos
 let routeIdx = 0;                       // por que punto de la ruta va el servidor
+let centered = false;                   // si ya encuadramos el mapa alguna vez
 let coolUntil = 0;                      // fin del cooldown, epoch ms
 const keys = new Set();
 
@@ -381,6 +382,9 @@ setInterval(async () => {
     prev = pos;
     pos = { lat: s.lat, lon: s.lon };
     paint();
+    // Navegador limpio pero servidor ya andando: encuadra donde estas de verdad,
+    // en vez de dejarte mirando el centro por defecto del mapa.
+    if (!centered) { centered = true; map.setView([pos.lat, pos.lon], 17); }
     el('distOut').textContent = (s.dist / 1000).toFixed(2);
     routeIdx = s.idx || 0;
     if (walking !== s.walking) {         // la ruta puede acabarse sola
@@ -811,8 +815,10 @@ const save = () => localStorage.setItem('joystick',
     if (start) {
       pos = { ...start }; paint(); map.setView([pos.lat, pos.lon], 17);
       patch.lat = start.lat; patch.lon = start.lon;
+      centered = true;
     } else if (route.length) {
       map.fitBounds(route.map((p) => [p.lat, p.lon]), { padding: [40, 40] });
+      centered = true;
     }
     send(patch);
   } catch (e) { drawRoute(); renderPlaces(); showHome(); }
