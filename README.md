@@ -309,7 +309,9 @@ last location=Location[fused 37.885898,-4.765798 ...]
 ```
 
 Proveedor `gps` y `fused`, sin marca de mock, porque no es un mock provider: es el
-GPS emulado. Ojo, `adb emu geo fix` pide **longitud primero**, hay un test en
+GPS emulado. El movimiento tambien cuadra: 10 pasos de 10 metros al norte dejan
+la latitud en 37.885897 partiendo de 37.884998, o sea 100.07 metros, con la
+longitud intacta. Ojo, `adb emu geo fix` pide **longitud primero**, hay un test en
 `test_spoof.py` para eso.
 
 Esto no sirve para jugar: Pokemon GO no arranca en un emulador, lo tumba Play
