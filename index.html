@@ -1,0 +1,251 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Joystick GPS</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; display: flex; height: 100vh; }
+  #map { flex: 1; }
+  #side { width: 300px; padding: 14px; overflow-y: auto; background: #16181d; color: #e6e6e6; }
+  h2 { margin: 0 0 12px; font-size: 15px; letter-spacing: .04em; text-transform: uppercase; color: #8ab4f8; }
+  .box { border-top: 1px solid #2c3038; padding: 12px 0; }
+  button { background: #2a2f38; color: #e6e6e6; border: 1px solid #3c434e; border-radius: 6px;
+           padding: 7px 10px; cursor: pointer; font-size: 13px; }
+  button:hover { background: #353c47; }
+  button.on { background: #2f6f4f; border-color: #3d8f66; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  label { display: block; margin-top: 8px; font-size: 12px; color: #9aa3b0; }
+  input[type=range] { width: 100%; }
+  #pad { width: 170px; height: 170px; margin: 10px auto 0; border-radius: 50%;
+         background: #21252c; border: 1px solid #3c434e; position: relative; touch-action: none; }
+  #knob { width: 52px; height: 52px; border-radius: 50%; background: #8ab4f8; position: absolute;
+          left: 59px; top: 59px; pointer-events: none; }
+  code { color: #f0c674; }
+  .stat { font-size: 12px; color: #9aa3b0; margin-top: 6px; }
+  .stat b { color: #e6e6e6; font-weight: 600; }
+</style>
+
+<div id="map"></div>
+<div id="side">
+  <h2>Joystick GPS</h2>
+
+  <div id="pad"><div id="knob"></div></div>
+  <div class="stat">Arrastra el circulo, o usa <code>WASD</code> / flechas.</div>
+
+  <div class="box">
+    <label>Velocidad: <b id="kmhLabel">4.5</b> km/h</label>
+    <input type="range" id="kmh" min="0.5" max="20" step="0.5" value="4.5">
+    <div class="row">
+      <button data-kmh="4.5">Andar</button>
+      <button data-kmh="9">Rapido</button>
+      <button data-kmh="15">Bici</button>
+    </div>
+  </div>
+
+  <div class="box">
+    <label><input type="checkbox" id="routeMode"> Modo ruta (click en mapa = punto)</label>
+    <div class="row">
+      <button id="walk">Recorrer</button>
+      <button id="undo">Quitar ultimo</button>
+      <button id="clearRoute">Borrar ruta</button>
+    </div>
+    <label>Al llegar al final</label>
+    <div class="row">
+      <label><input type="radio" name="endmode" value="loop" checked> Bucle</label>
+      <label><input type="radio" name="endmode" value="pingpong"> Ida y vuelta</label>
+      <label><input type="radio" name="endmode" value="once"> Parar</label>
+    </div>
+  </div>
+
+  <div class="box">
+    <label><input type="checkbox" id="jitter" checked> Ruido GPS (+-3 m)</label>
+    <div class="row"><button id="stopSim">Devolver GPS real</button></div>
+  </div>
+
+  <div class="box">
+    <div class="stat">Pos: <b id="posOut">sin fijar</b></div>
+    <div class="stat">Recorrido: <b id="distOut">0.00</b> km</div>
+    <div class="stat">Estado: <b id="status">listo</b></div>
+    <div class="stat">Click en el mapa (sin modo ruta) = fijar posicion.</div>
+  </div>
+</div>
+
+<script>
+const M = 111320;                       // metros por grado de latitud
+const el = (id) => document.getElementById(id);
+const map = L.map('map').setView([40.4168, -3.7038], 16);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  { maxZoom: 19, attribution: 'OpenStreetMap' }).addTo(map);
+
+let pos = null;                         // {lat, lon} posicion simulada
+let vec = { x: 0, y: 0 };               // joystick normalizado, x=este y=norte
+let route = [];                         // waypoints
+let idx = 0, dir = 1, walking = false;
+let dist = 0;
+const keys = new Set();
+
+const me = L.circleMarker([0, 0], { radius: 8, color: '#8ab4f8', fillOpacity: .9 });
+const line = L.polyline([], { color: '#f0c674', weight: 3, dashArray: '6 6' }).addTo(map);
+const pins = L.layerGroup().addTo(map);
+
+// --- geometria ---------------------------------------------------------
+const mLon = (lat) => M * Math.cos(lat * Math.PI / 180);
+function metersBetween(a, b) {
+  return Math.hypot((b.lon - a.lon) * mLon(a.lat), (b.lat - a.lat) * M);
+}
+function shift(p, east, north) {
+  return { lat: p.lat + north / M, lon: p.lon + east / mLon(p.lat) };
+}
+
+// --- envio al movil ----------------------------------------------------
+let sending = false;
+async function push() {
+  if (!pos || sending) return;
+  sending = true;
+  const j = el('jitter').checked ? 3 : 0;
+  const noise = () => (Math.random() * 2 - 1) * j;
+  const out = shift(pos, noise(), noise());
+  try {
+    const r = await fetch('/loc', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat: out.lat, lon: out.lon })
+    });
+    el('status').textContent = r.ok ? 'enviando' : 'error ' + r.status;
+  } catch (e) {
+    el('status').textContent = 'sin conexion con spoof.py';
+  }
+  sending = false;
+}
+
+function render() {
+  if (!pos) return;
+  me.setLatLng([pos.lat, pos.lon]).addTo(map);
+  el('posOut').textContent = pos.lat.toFixed(6) + ', ' + pos.lon.toFixed(6);
+  el('distOut').textContent = (dist / 1000).toFixed(2);
+}
+
+// --- bucle: 1 posicion por segundo, como un GPS real -------------------
+setInterval(() => {
+  if (!pos) return;
+  const step = (+el('kmh').value) * 1000 / 3600;   // metros en 1 s
+  if (walking && route.length > 1) advance(step);
+  else {
+    const m = Math.hypot(vec.x, vec.y);
+    if (m > 0.05) {
+      const k = Math.min(1, m) / m * step;
+      pos = shift(pos, vec.x * k, vec.y * k);
+      dist += Math.min(1, m) * step;
+    } else { render(); return; }
+  }
+  render();
+  push();
+}, 1000);
+
+function advance(budget) {
+  for (let guard = 0; budget > 1e-6 && guard < 500; guard++) {
+    const t = route[idx];
+    const d = metersBetween(pos, t);
+    if (d > budget) {
+      const f = budget / d;
+      pos = { lat: pos.lat + (t.lat - pos.lat) * f, lon: pos.lon + (t.lon - pos.lon) * f };
+      dist += budget;
+      return;
+    }
+    pos = { lat: t.lat, lon: t.lon };
+    dist += d; budget -= d;
+    if (!nextTarget()) { walking = false; el('walk').classList.remove('on'); return; }
+  }
+}
+
+function nextTarget() {
+  const n = idx + dir;
+  if (n >= 0 && n < route.length) { idx = n; return true; }
+  const mode = document.querySelector('input[name=endmode]:checked').value;
+  if (mode === 'loop') { idx = dir > 0 ? 0 : route.length - 1; return true; }
+  if (mode === 'pingpong') { dir *= -1; idx = n + 2 * dir; return idx >= 0 && idx < route.length; }
+  return false;
+}
+
+// --- joystick ----------------------------------------------------------
+const pad = el('pad'), knob = el('knob');
+const R = 59;
+function setVec(x, y) {
+  vec = { x, y };
+  knob.style.transform = 'translate(' + (x * R) + 'px,' + (-y * R) + 'px)';
+}
+function drag(e) {
+  const r = pad.getBoundingClientRect();
+  let dx = (e.clientX - r.left - r.width / 2) / R;
+  let dy = (e.clientY - r.top - r.height / 2) / R;
+  const m = Math.hypot(dx, dy);
+  if (m > 1) { dx /= m; dy /= m; }
+  setVec(dx, -dy);
+}
+pad.addEventListener('pointerdown', (e) => { pad.setPointerCapture(e.pointerId); drag(e); });
+pad.addEventListener('pointermove', (e) => { if (e.buttons) drag(e); });
+pad.addEventListener('pointerup', () => setVec(0, 0));
+pad.addEventListener('pointercancel', () => setVec(0, 0));
+
+const KEYMAP = { w: [0, 1], s: [0, -1], a: [-1, 0], d: [1, 0],
+                 arrowup: [0, 1], arrowdown: [0, -1], arrowleft: [-1, 0], arrowright: [1, 0] };
+function fromKeys() {
+  let x = 0, y = 0;
+  for (const k of keys) { const v = KEYMAP[k]; if (v) { x += v[0]; y += v[1]; } }
+  const m = Math.hypot(x, y);
+  setVec(m ? x / m : 0, m ? y / m : 0);
+}
+addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase();
+  if (!KEYMAP[k] || e.target.tagName === 'INPUT') return;
+  e.preventDefault(); keys.add(k); fromKeys();
+});
+addEventListener('keyup', (e) => { keys.delete(e.key.toLowerCase()); fromKeys(); });
+addEventListener('blur', () => { keys.clear(); setVec(0, 0); });
+
+// --- mapa y ruta -------------------------------------------------------
+map.on('click', (e) => {
+  const p = { lat: e.latlng.lat, lon: e.latlng.lng };
+  if (el('routeMode').checked) { route.push(p); if (!pos) pos = { ...p }; drawRoute(); }
+  else { pos = p; dist = 0; render(); push(); }
+  save();
+});
+
+function drawRoute() {
+  line.setLatLngs(route.map((p) => [p.lat, p.lon]));
+  pins.clearLayers();
+  route.forEach((p, i) => L.circleMarker([p.lat, p.lon],
+    { radius: 5, color: '#f0c674', fillOpacity: 1 }).bindTooltip(String(i + 1)).addTo(pins));
+}
+
+el('walk').onclick = () => {
+  if (route.length < 2) { el('status').textContent = 'marca 2 puntos o mas'; return; }
+  walking = !walking;
+  el('walk').classList.toggle('on', walking);
+  if (walking) { if (!pos) pos = { ...route[0] }; idx = 0; dir = 1; }
+};
+el('undo').onclick = () => { route.pop(); drawRoute(); save(); };
+el('clearRoute').onclick = () => { route = []; walking = false; el('walk').classList.remove('on'); drawRoute(); save(); };
+el('stopSim').onclick = async () => {
+  walking = false; el('walk').classList.remove('on'); setVec(0, 0); pos = null;
+  await fetch('/clear', { method: 'POST' });
+  el('status').textContent = 'GPS real restaurado';
+};
+el('kmh').oninput = (e) => { el('kmhLabel').textContent = e.target.value; save(); };
+document.querySelectorAll('[data-kmh]').forEach((b) => b.onclick = () => {
+  el('kmh').value = b.dataset.kmh; el('kmhLabel').textContent = b.dataset.kmh; save();
+});
+
+// --- persistencia ------------------------------------------------------
+const save = () => localStorage.setItem('joystick',
+  JSON.stringify({ route, kmh: el('kmh').value, pos }));
+(function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem('joystick') || '{}');
+    if (s.route) { route = s.route; drawRoute(); }
+    if (s.kmh) { el('kmh').value = s.kmh; el('kmhLabel').textContent = s.kmh; }
+    if (s.pos) { pos = s.pos; render(); map.setView([pos.lat, pos.lon], 16); }
+    else if (route.length) map.fitBounds(route.map((p) => [p.lat, p.lon]), { padding: [40, 40] });
+  } catch (e) { /* primera vez */ }
+})();
+</script>
