@@ -139,7 +139,7 @@
     font: 400 11.5px var(--sans); text-decoration: underline; text-underline-offset: 3px;
   }
   .link:hover { color: var(--magenta); }
-  .hide { display: none; }
+  .hide { display: none !important; }
 
   /* --- lugares --- */
   .place { display: flex; align-items: center; gap: 4px; padding: 3px 0; }
@@ -217,7 +217,7 @@
     #side { width: 100%; border-left: 0; border-top: 1px solid var(--rule); }
   }
   @media (prefers-reduced-motion: reduce) {
-    * { transition: none !important; animation: none !important; }
+    #side *, .view *, .leaflet-popup { transition: none !important; animation: none !important; }
   }
 </style>
 
