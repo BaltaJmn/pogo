@@ -10,7 +10,12 @@ desarrollador de iOS (DVT), el mismo que usa Xcode para simular ubicacion.
 
 Probado en: macOS + iPhone XR con iOS 18.6.2, conectado por wifi.
 
-## Estado: Pokemon GO no funciona
+## Estado: en iPhone no, en emulador de Android si
+
+Pokemon GO **funciona con el emulador de Android**: arranca, carga el mapa, y
+anda con el joystick. Ver [Uso diario](#uso-diario), opcion `--android`.
+
+En iPhone no hay nada que hacer, y el resto de esta seccion explica por que.
 
 Probado el 2026-09-06 en iPhone XR con iOS 18.6.2. Nada mas abrir el juego sale
 "Failed to detect location (12)". La distancia da igual: falla tambien con la
@@ -314,10 +319,20 @@ la latitud en 37.885897 partiendo de 37.884998, o sea 100.07 metros, con la
 longitud intacta. Ojo, `adb emu geo fix` pide **longitud primero**, hay un test en
 `test_spoof.py` para eso.
 
-Esto no sirve para jugar: Pokemon GO no arranca en un emulador, lo tumba Play
-Integrity. El emulador es el banco de pruebas. Para jugar haria falta movil
-Android real, y ahi la inyeccion por `adb` marca la posicion con `isMock`, que es
-justo lo que Niantic mira. Sin root, mismo muro que en iOS.
+**Android, emulador: Pokemon GO tambien funciona.** Predije que Play Integrity lo
+tumbaria y me equivoque. En un emulador arm64 de Android Studio sobre Apple
+Silicon (`sdk_gphone16k_arm64`) el juego arranca, entra en la cuenta, carga el
+mapa con paradas y gimnasios, y responde al joystick: andando 50 metros a paso
+humano salto un encuentro salvaje. Ningun error 12.
+
+El motivo es el de siempre, visto del derecho: `adb emu geo fix` no es un mock
+provider, alimenta el GPS emulado. El sistema sirve esa posicion como una
+normal, sin `isMock` y sin nada equivalente a `isSimulatedBySoftware`. No hay
+marca que detectar.
+
+En movil Android real sin root la cosa cambia: ahi la inyeccion por `adb` va por
+test provider y si marca `isMock`, que es justo lo que Niantic lee. El emulador
+se libra por no tener GPS de verdad.
 
 **Conclusion.** iOS cerrado. Los dos unicos canales de ubicacion del sistema son
 el mismo feature de Xcode, y ese feature va marcado. Lo que queda esta todo fuera
