@@ -203,10 +203,16 @@ El joystick a velocidad de andar no dispara cooldown. Saltar de ciudad si.
 
 - `spoof.py`: abre el tunel RemoteXPC con el movil usando el `remotepairingd` de
   macOS (sin root), monta la DeveloperDiskImage si no lo esta, y sirve una API
-  local. `POST /loc` inyecta una coordenada via `LocationSimulation` de DVT.
-- `index.html`: el mapa, el joystick y el recorrido de rutas. Toda la
-  interpolacion de movimiento se calcula en el navegador; el servidor solo
-  reenvia coordenadas al movil.
+  local. Tambien lleva el movimiento: un bucle propio avanza la posicion e
+  inyecta un fix por segundo, la cadencia de un GPS real. En iPhone via
+  `LocationSimulation` de DVT, en emulador via `adb emu geo fix`.
+- `index.html`: el mapa, el joystick y el editor de rutas. Solo manda la
+  intencion con `POST /loc` (`vx`, `vy`, `kmh`, `route`, `walking`...) y sondea
+  `GET /pos` para pintar. No calcula movimiento.
+
+El bucle esta en el servidor a proposito. Chrome estrangula los temporizadores de
+una pestaña oculta, y para mirar el juego tienes que tapar el navegador. Asi
+sigues andando aunque cierres la pestaña.
 
 ## Problemas
 
@@ -385,7 +391,42 @@ la pestaña despierta avanza a 1.25 m/s clavados. Chrome baja el temporizador de
 las pestañas de fondo, y para mirar el juego hay que tapar el navegador. Esto
 contamina cualquier medida y ademas rompe el uso normal.
 
-Pendiente: paseo largo de 150 s inyectando por `adb` directamente, sin navegador,
-para ver si el avatar sigue la linea. Si la sigue, el problema es el
-estrangulamiento del temporizador y el arreglo es sacar el bucle de `index.html`
-y meterlo en `spoof.py`. Si no la sigue, el problema es del cliente de Niantic.
+**El juego si sigue la posicion en vivo.** Paseo de 150 s al este a 4.5 km/h
+inyectando por `adb` directamente, sin navegador de por medio, con capturas del
+emulador antes, a mitad y al final. El mapa avanza, cargan paradas nuevas y
+salen encuentros salvajes (Clefairy, Nidoran, Pikachu). Al abrir el perfil salto
+una eclosion de huevo, que solo pasa acumulando kilometros andando. Niantic
+cuenta el recorrido.
+
+**El avatar no se dibuja, y eso es otra cosa.** El circulo morado de alcance esta
+en su sitio y los Pokemon se renderizan bien, pero el muñeco del jugador no
+aparece. El emulador se queda en OpenGL ES 3.0:
+
+```
+GLES: Google (Apple), Android Emulator OpenGL ES Translator (Apple M2 Pro),
+      OpenGL ES 3.0 (4.1 Metal - 90.5)
+ANDROID_EMU_gles_max_version_3_0
+```
+
+Es cosmetico y no toca a la ubicacion. La prueba es que sin avatar visible el
+juego sigue contando kilometros y eclosionando huevos.
+
+**Arreglado: el bucle de movimiento se muda a `spoof.py`.** La causa real de
+"muevo el joystick y no pasa nada". Ahora `index.html` solo manda la intencion
+(`vx`, `vy`, `kmh`, `route`, `walking`, `endmode`, `jitter`) por `POST /loc` y
+sondea `GET /pos` para pintar. El servidor avanza la posicion e inyecta un fix
+por segundo. Andas aunque tapes o cierres el navegador. Comprobado sin navegador
+ninguno:
+
+```
+t=0   {"lat":37.885835,"lon":-4.765513,"dist":0.0}
+t=10  {"lat":37.885835,"lon":-4.765370,"dist":12.5}
+      movil: Location[gps 37.885843,-4.765387 hAcc=5.0]
+t=20  {"lat":37.885835,"lon":-4.765242,"dist":23.75}
+      movil: Location[gps 37.885835,-4.765248 hAcc=5.0]
+```
+
+12.5 metros en 10 segundos son los 4.5 km/h pedidos, y el desfase de metros con
+el movil es el ruido GPS de +-3 m. `test_spoof.py` cubre el motor: velocidad,
+medio gas, zona muerta, bucle, ida y vuelta, modo parar y ruta con puntos
+repetidos.

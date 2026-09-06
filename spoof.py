@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """Joystick GPS y rutas para iPhone (iOS 17+) via pymobiledevice3.
 
-Levanta una web local. El navegador calcula el movimiento y manda una
-coordenada por segundo; aqui solo se inyecta en el movil.
+Levanta una web local. El movimiento se calcula aqui, un fix por segundo, y la
+web solo manda la intencion: hacia donde y a que velocidad. Antes el bucle vivia
+en el navegador y Chrome lo estrangulaba al ocultar la pestaña, que es justo lo
+que pasa mientras miras el juego.
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
+import math
+import random
 import shutil
 from pathlib import Path
 
@@ -25,7 +29,15 @@ from pymobiledevice3.services.mobile_image_mounter import auto_mount
 
 HERE = Path(__file__).resolve().parent
 ADB = shutil.which("adb") or str(Path.home() / "Library/Android/sdk/platform-tools/adb")
-SIM = {"loc": None, "lat": None, "lon": None}
+M = 111320.0  # metros por grado de latitud
+SIM = {
+    "loc": None, "lat": None, "lon": None, "dist": 0.0,
+    "vx": 0.0, "vy": 0.0,          # joystick normalizado, x=este y=norte
+    "kmh": 4.5, "jitter": True,
+    "route": [], "idx": 0, "dir": 1, "endmode": "loop", "walking": False,
+}
+# Claves que la web puede tocar. Lista blanca: el resto del estado es nuestro.
+INTENT = ("vx", "vy", "kmh", "jitter", "route", "endmode", "walking")
 LOCK = asyncio.Lock()
 
 
@@ -56,29 +68,135 @@ class AdbEmulator:
         pass  # el emulador no tiene GPS real al que volver
 
 
+# --- movimiento --------------------------------------------------------
+
+
+def shift(lat: float, lon: float, east: float, north: float) -> tuple[float, float]:
+    return lat + north / M, lon + east / (M * math.cos(math.radians(lat)))
+
+
+def meters(alat: float, alon: float, blat: float, blon: float) -> float:
+    return math.hypot((blon - alon) * M * math.cos(math.radians(alat)), (blat - alat) * M)
+
+
+def next_target() -> bool:
+    n = SIM["idx"] + SIM["dir"]
+    if 0 <= n < len(SIM["route"]):
+        SIM["idx"] = n
+        return True
+    if SIM["endmode"] == "loop":
+        SIM["idx"] = 0 if SIM["dir"] > 0 else len(SIM["route"]) - 1
+        return True
+    if SIM["endmode"] == "pingpong":
+        SIM["dir"] *= -1
+        SIM["idx"] = n + 2 * SIM["dir"]
+        return 0 <= SIM["idx"] < len(SIM["route"])
+    return False
+
+
+def advance(budget: float) -> None:
+    """Consume `budget` metros siguiendo la ruta. El guard corta rutas degeneradas
+    con puntos repetidos, que si no dan vueltas sin gastar presupuesto."""
+    for _ in range(500):
+        if budget <= 1e-6:
+            return
+        t = SIM["route"][SIM["idx"]]
+        d = meters(SIM["lat"], SIM["lon"], t["lat"], t["lon"])
+        if d > budget:
+            f = budget / d
+            SIM["lat"] += (t["lat"] - SIM["lat"]) * f
+            SIM["lon"] += (t["lon"] - SIM["lon"]) * f
+            SIM["dist"] += budget
+            return
+        SIM["lat"], SIM["lon"] = t["lat"], t["lon"]
+        SIM["dist"] += d
+        budget -= d
+        if not next_target():
+            SIM["walking"] = False
+            return
+
+
+def step() -> bool:
+    """Un segundo de movimiento. True si hay que reinyectar."""
+    if SIM["lat"] is None:
+        return False
+    metros = SIM["kmh"] * 1000 / 3600
+    if SIM["walking"] and len(SIM["route"]) > 1:
+        advance(metros)
+        return True
+    m = math.hypot(SIM["vx"], SIM["vy"])
+    if m <= 0.05:
+        return False
+    k = min(1.0, m) / m * metros
+    SIM["lat"], SIM["lon"] = shift(SIM["lat"], SIM["lon"], SIM["vx"] * k, SIM["vy"] * k)
+    SIM["dist"] += min(1.0, m) * metros
+    return True
+
+
+async def inject() -> None:
+    lat, lon = SIM["lat"], SIM["lon"]
+    if SIM["jitter"]:
+        lat, lon = shift(lat, lon, random.uniform(-3, 3), random.uniform(-3, 3))
+    async with LOCK:
+        await SIM["loc"].set(lat, lon)
+
+
+async def ticker() -> None:
+    """Un fix por segundo, la cadencia de un GPS real. Sigue corriendo aunque
+    cierres el navegador."""
+    while True:
+        await asyncio.sleep(1)
+        try:
+            if step():
+                await inject()
+        except Exception as e:  # una inyeccion fallida no puede matar el bucle
+            print(f"tick: {e}")
+
+
+# --- web ---------------------------------------------------------------
+
+
 async def index(request):
     return FileResponse(HERE / "index.html")
 
 
 async def pos(request):
-    return JSONResponse({"lat": SIM["lat"], "lon": SIM["lon"]})
+    return JSONResponse({"lat": SIM["lat"], "lon": SIM["lon"], "dist": SIM["dist"],
+                         "walking": SIM["walking"]})
+
+
+def valid(lat, lon) -> bool:
+    return -90 <= lat <= 90 and -180 <= lon <= 180
 
 
 async def set_loc(request):
+    """Teletransporte y/o cambio de intencion. La web manda solo lo que cambia."""
     body = await request.json()
-    lat, lon = float(body["lat"]), float(body["lon"])
-    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-        return JSONResponse({"ok": False, "error": "coordenadas fuera de rango"}, status_code=400)
-    async with LOCK:
-        await SIM["loc"].set(lat, lon)
-    SIM["lat"], SIM["lon"] = lat, lon
+    if "lat" in body:
+        lat, lon = float(body["lat"]), float(body["lon"])
+        if not valid(lat, lon):
+            return JSONResponse({"ok": False, "error": "coordenadas fuera de rango"},
+                                status_code=400)
+        SIM["lat"], SIM["lon"] = lat, lon
+        SIM["dist"] = 0.0
+    if "route" in body:
+        r = body["route"]
+        if not all(valid(float(p["lat"]), float(p["lon"])) for p in r):
+            return JSONResponse({"ok": False, "error": "ruta fuera de rango"}, status_code=400)
+        body["route"] = [{"lat": float(p["lat"]), "lon": float(p["lon"])} for p in r]
+        SIM["idx"], SIM["dir"] = 0, 1
+    for k in INTENT:
+        if k in body:
+            SIM[k] = body[k]
+    if SIM["lat"] is not None:
+        await inject()
     return JSONResponse({"ok": True})
 
 
 async def clear_loc(request):
+    SIM.update(lat=None, lon=None, vx=0.0, vy=0.0, walking=False, dist=0.0)
     async with LOCK:
         await SIM["loc"].clear()
-    SIM["lat"] = SIM["lon"] = None
     return JSONResponse({"ok": True})
 
 
@@ -127,8 +245,12 @@ async def main() -> None:
 async def serve(loc, port: int) -> None:
     SIM["loc"] = loc
     print(f"\n  joystick -> http://127.0.0.1:{port}\n")
+    task = asyncio.create_task(ticker())
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
-    await uvicorn.Server(config).serve()
+    try:
+        await uvicorn.Server(config).serve()
+    finally:
+        task.cancel()
 
 
 if __name__ == "__main__":

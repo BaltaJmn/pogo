@@ -85,17 +85,18 @@
 </div>
 
 <script>
-const M = 111320;                       // metros por grado de latitud
 const el = (id) => document.getElementById(id);
 const map = L.map('map').setView([40.4168, -3.7038], 16);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   { maxZoom: 19, attribution: 'OpenStreetMap' }).addTo(map);
 
-let pos = null;                         // {lat, lon} posicion simulada
+// El que anda es spoof.py. Esta pagina solo manda la intencion (hacia donde, a
+// que velocidad) y pinta lo que el servidor diga. Antes el bucle vivia aqui y
+// Chrome lo estrangulaba en cuanto tapabas la pestaña con el juego.
+let pos = null;                         // {lat, lon} espejo de la posicion del servidor
 let vec = { x: 0, y: 0 };               // joystick normalizado, x=este y=norte
 let route = [];                         // waypoints
-let idx = 0, dir = 1, walking = false;
-let dist = 0;
+let walking = false;
 let home = null;                        // punto de partida real, solo en localStorage
 const keys = new Set();
 
@@ -103,91 +104,54 @@ const me = L.circleMarker([0, 0], { radius: 8, color: '#8ab4f8', fillOpacity: .9
 const line = L.polyline([], { color: '#f0c674', weight: 3, dashArray: '6 6' }).addTo(map);
 const pins = L.layerGroup().addTo(map);
 const homeMark = L.circleMarker([0, 0], { radius: 7, color: '#5fd38d', fillOpacity: .9 });
+const endmode = () => document.querySelector('input[name=endmode]:checked').value;
 
-// --- geometria ---------------------------------------------------------
-const mLon = (lat) => M * Math.cos(lat * Math.PI / 180);
-function metersBetween(a, b) {
-  return Math.hypot((b.lon - a.lon) * mLon(a.lat), (b.lat - a.lat) * M);
-}
-function shift(p, east, north) {
-  return { lat: p.lat + north / M, lon: p.lon + east / mLon(p.lat) };
-}
-
-// --- envio al movil ----------------------------------------------------
-let sending = false;
-async function push() {
-  if (!pos || sending) return;
-  sending = true;
-  const j = el('jitter').checked ? 3 : 0;
-  const noise = () => (Math.random() * 2 - 1) * j;
-  const out = shift(pos, noise(), noise());
+// --- servidor ----------------------------------------------------------
+async function send(patch) {
   try {
     const r = await fetch('/loc', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lat: out.lat, lon: out.lon })
+      body: JSON.stringify(patch)
     });
     el('status').textContent = r.ok ? 'enviando' : 'error ' + r.status;
   } catch (e) {
     el('status').textContent = 'sin conexion con spoof.py';
   }
-  sending = false;
 }
 
-function render() {
+function paint() {
   if (!pos) return;
   me.setLatLng([pos.lat, pos.lon]).addTo(map);
   el('posOut').textContent = pos.lat.toFixed(6) + ', ' + pos.lon.toFixed(6);
-  el('distOut').textContent = (dist / 1000).toFixed(2);
 }
 
-// --- bucle: 1 posicion por segundo, como un GPS real -------------------
-setInterval(() => {
-  if (!pos) return;
-  const step = (+el('kmh').value) * 1000 / 3600;   // metros en 1 s
-  if (walking && route.length > 1) advance(step);
-  else {
-    const m = Math.hypot(vec.x, vec.y);
-    if (m > 0.05) {
-      const k = Math.min(1, m) / m * step;
-      pos = shift(pos, vec.x * k, vec.y * k);
-      dist += Math.min(1, m) * step;
-    } else { render(); return; }
-  }
-  render();
-  push();
-}, 1000);
-
-function advance(budget) {
-  for (let guard = 0; budget > 1e-6 && guard < 500; guard++) {
-    const t = route[idx];
-    const d = metersBetween(pos, t);
-    if (d > budget) {
-      const f = budget / d;
-      pos = { lat: pos.lat + (t.lat - pos.lat) * f, lon: pos.lon + (t.lon - pos.lon) * f };
-      dist += budget;
-      return;
+// Sondeo solo para pintar. Que Chrome lo frene con la pestaña oculta da igual,
+// el movimiento no depende de el.
+setInterval(async () => {
+  try {
+    const s = await fetch('/pos').then((r) => r.json());
+    if (s.lat === null) return;
+    pos = { lat: s.lat, lon: s.lon };
+    paint();
+    el('distOut').textContent = (s.dist / 1000).toFixed(2);
+    if (walking !== s.walking) {         // la ruta puede acabarse sola
+      walking = s.walking;
+      el('walk').classList.toggle('on', walking);
     }
-    pos = { lat: t.lat, lon: t.lon };
-    dist += d; budget -= d;
-    if (!nextTarget()) { walking = false; el('walk').classList.remove('on'); return; }
+  } catch (e) {
+    el('status').textContent = 'sin conexion con spoof.py';
   }
-}
-
-function nextTarget() {
-  const n = idx + dir;
-  if (n >= 0 && n < route.length) { idx = n; return true; }
-  const mode = document.querySelector('input[name=endmode]:checked').value;
-  if (mode === 'loop') { idx = dir > 0 ? 0 : route.length - 1; return true; }
-  if (mode === 'pingpong') { dir *= -1; idx = n + 2 * dir; return idx >= 0 && idx < route.length; }
-  return false;
-}
+}, 1000);
 
 // --- joystick ----------------------------------------------------------
 const pad = el('pad'), knob = el('knob');
 const R = 59;
 function setVec(x, y) {
-  vec = { x, y };
   knob.style.transform = 'translate(' + (x * R) + 'px,' + (-y * R) + 'px)';
+  // El puntero dispara decenas de eventos por segundo. Solo interesa el cambio.
+  if (Math.abs(x - vec.x) < .02 && Math.abs(y - vec.y) < .02) return;
+  vec = { x, y };
+  send({ vx: x, vy: y });
 }
 function drag(e) {
   const r = pad.getBoundingClientRect();
@@ -221,8 +185,8 @@ addEventListener('blur', () => { keys.clear(); setVec(0, 0); });
 // --- mapa y ruta -------------------------------------------------------
 map.on('click', (e) => {
   const p = { lat: e.latlng.lat, lon: e.latlng.lng };
-  if (el('routeMode').checked) { route.push(p); if (!pos) pos = { ...p }; drawRoute(); }
-  else { pos = p; dist = 0; render(); push(); }
+  if (el('routeMode').checked) { route.push(p); drawRoute(); send({ route }); }
+  else { pos = p; paint(); send({ lat: p.lat, lon: p.lon }); }
   save();
 });
 
@@ -237,19 +201,29 @@ el('walk').onclick = () => {
   if (route.length < 2) { el('status').textContent = 'marca 2 puntos o mas'; return; }
   walking = !walking;
   el('walk').classList.toggle('on', walking);
-  if (walking) { if (!pos) pos = { ...route[0] }; idx = 0; dir = 1; }
+  const patch = { walking, route, endmode: endmode() };
+  if (walking && !pos) { patch.lat = route[0].lat; patch.lon = route[0].lon; }
+  send(patch);
 };
-el('undo').onclick = () => { route.pop(); drawRoute(); save(); };
-el('clearRoute').onclick = () => { route = []; walking = false; el('walk').classList.remove('on'); drawRoute(); save(); };
+el('undo').onclick = () => { route.pop(); drawRoute(); send({ route }); save(); };
+el('clearRoute').onclick = () => {
+  route = []; walking = false; el('walk').classList.remove('on');
+  drawRoute(); send({ route, walking }); save();
+};
 el('stopSim').onclick = async () => {
-  walking = false; el('walk').classList.remove('on'); setVec(0, 0); pos = null;
+  walking = false; el('walk').classList.remove('on'); setVec(0, 0);
+  pos = null; if (map.hasLayer(me)) map.removeLayer(me);
   await fetch('/clear', { method: 'POST' });
   el('status').textContent = 'GPS real restaurado';
 };
-el('kmh').oninput = (e) => { el('kmhLabel').textContent = e.target.value; save(); };
+el('kmh').oninput = (e) => { el('kmhLabel').textContent = e.target.value; send({ kmh: +e.target.value }); save(); };
 document.querySelectorAll('[data-kmh]').forEach((b) => b.onclick = () => {
-  el('kmh').value = b.dataset.kmh; el('kmhLabel').textContent = b.dataset.kmh; save();
+  el('kmh').value = b.dataset.kmh; el('kmhLabel').textContent = b.dataset.kmh;
+  send({ kmh: +b.dataset.kmh }); save();
 });
+el('jitter').onchange = (e) => send({ jitter: e.target.checked });
+document.querySelectorAll('input[name=endmode]').forEach((r) =>
+  r.onchange = () => send({ endmode: endmode() }));
 
 // --- casa --------------------------------------------------------------
 function showHome() {
@@ -268,7 +242,8 @@ el('setHome').onclick = () => {
 el('goHome').onclick = () => {
   if (!home) { el('status').textContent = 'no hay casa fijada'; return; }
   walking = false; el('walk').classList.remove('on'); setVec(0, 0);
-  pos = { ...home }; dist = 0; render(); push();
+  pos = { ...home }; paint();
+  send({ lat: home.lat, lon: home.lon, walking: false });
 };
 
 // --- persistencia ------------------------------------------------------
@@ -283,8 +258,15 @@ const save = () => localStorage.setItem('joystick',
     showHome();
     // Arranca siempre en casa: asi el movil nunca abre en una posicion lejana.
     const start = home || s.pos;
-    if (start) { pos = { ...start }; render(); push(); map.setView([pos.lat, pos.lon], 17); }
-    else if (route.length) map.fitBounds(route.map((p) => [p.lat, p.lon]), { padding: [40, 40] });
+    const patch = { route, kmh: +el('kmh').value, jitter: el('jitter').checked,
+                    endmode: endmode(), walking: false, vx: 0, vy: 0 };
+    if (start) {
+      pos = { ...start }; paint(); map.setView([pos.lat, pos.lon], 17);
+      patch.lat = start.lat; patch.lon = start.lon;
+    } else if (route.length) {
+      map.fitBounds(route.map((p) => [p.lat, p.lon]), { padding: [40, 40] });
+    }
+    send(patch);
   } catch (e) { showHome(); }
 })();
 </script>
