@@ -547,3 +547,30 @@ via que queda por probar.
 
 Para deshacerlo todo: borrar `~/.android/advancedFeatures.ini` y reiniciar el
 emulador.
+
+### 2026-09-06, tarde 4: forzar Vulkan en Unity tampoco sirve
+
+**Intento:** lanzar el juego pidiendole a Unity que use Vulkan en vez de OpenGL, con el argumento de arranque de Unity pasado como extra del intent:
+
+```sh
+adb shell am start -n com.nianticlabs.pokemongo/com.nianticproject.holoholo.libholoholo.unity.UnityMainActivity --es unity "-force-vulkan"
+```
+
+**Resultado:** el juego arranca, pero Unity responde en logcat:
+
+```
+E Unity   : Forced GfxDevice 'Vulkan' was not built from editor, shaders will not be available
+```
+
+**Interpretacion:** el APK de Pokemon GO no lleva variantes de shader compiladas para Vulkan, solo para OpenGL ES. Aunque el emulador tenga Vulkan activo y funcionando (MoltenVK sobre Apple M2 Pro), el juego no puede usarlo. La via de Vulkan queda cerrada para esta build del juego.
+
+**Y siguen apareciendo los mismos errores al volver a OpenGL:**
+
+```
+E GFXSTREAM: [egl.cpp(1800)] EGL_BAD_CONFIG: no ES 3.2 support
+E GFXSTREAM: [egl.cpp(1794)] EGL_BAD_CONFIG: no ES 3.1 support
+```
+
+**Confirmacion del usuario:** el juego arranca pero el personaje sigue sin aparecer.
+
+**Estado:** descartadas hasta ahora tres vias para subir de OpenGL ES 3.0: ANGLE por paquete (carga pero Unity no inicializa), Unity eligiendo Vulkan solo (no lo hace) y forzar Vulkan por argumento (no hay shaders).
