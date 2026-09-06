@@ -90,12 +90,33 @@ levanta la web. Deja la terminal abierta: si cierras el proceso se cae el tunel.
 | Crear ruta | Marcar "Modo ruta" y hacer click en cada punto |
 | Recorrer ruta | Boton "Recorrer" |
 | Fin de ruta | Bucle, Ida y vuelta, o Parar |
+| Fijar casa | Boton "Fijar casa aqui", con la posicion puesta en tu portal |
+| Volver a casa | Boton "Ir a casa" |
 | Volver al GPS real | Boton "Devolver GPS real" |
 
 La ruta y la velocidad se guardan en el navegador. Siguen ahi al reabrir.
 
 Manda una coordenada por segundo, como un GPS real, con +-3 metros de ruido para
 que la traza no salga en linea geometrica perfecta.
+
+## Punto de partida (casa)
+
+Fija tu ubicacion real como punto de partida. Al abrir la web el movil arranca
+siempre ahi, no en donde lo dejaste la ultima vez. Asi no hay saltos entre
+sesiones.
+
+Una sola vez:
+
+1. Busca tu portal en el mapa y haz zoom.
+2. Haz click encima, con "Modo ruta" desactivado.
+3. Pulsa "Fijar casa aqui".
+
+Se guarda en el `localStorage` del navegador. **No se guarda en el repo ni se
+manda a ningun servidor**: tu direccion no sale de tu Mac. Si borras los datos
+del navegador hay que volver a fijarla.
+
+El boton "Ir a casa" te devuelve ahi de golpe. Si venias de una ubicacion
+lejana, ese salto tambien tiene cooldown antes de poder hacer acciones.
 
 ## Reglas de Pokemon GO
 
