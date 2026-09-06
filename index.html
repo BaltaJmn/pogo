@@ -65,10 +65,19 @@
 
   <div class="box">
     <div class="row">
+      <button id="center">Centrar aqui</button>
+      <button id="follow">Seguir</button>
+    </div>
+    <div class="row">
       <button id="goHome">Ir a casa</button>
       <button id="setHome">Fijar casa aqui</button>
     </div>
     <div class="stat" id="homeOut"></div>
+  </div>
+
+  <div class="box">
+    <div class="row"><button id="emuStart">Arrancar emulador</button></div>
+    <div class="stat" id="emuOut">emulador: comprobando...</div>
   </div>
 
   <div class="box">
@@ -98,6 +107,7 @@ let vec = { x: 0, y: 0 };               // joystick normalizado, x=este y=norte
 let route = [];                         // waypoints
 let walking = false;
 let home = null;                        // punto de partida real, solo en localStorage
+let follow = false;                     // si el mapa persigue al marcador
 const keys = new Set();
 
 const me = L.circleMarker([0, 0], { radius: 8, color: '#8ab4f8', fillOpacity: .9 });
@@ -122,6 +132,7 @@ async function send(patch) {
 function paint() {
   if (!pos) return;
   me.setLatLng([pos.lat, pos.lon]).addTo(map);
+  if (follow) map.panTo([pos.lat, pos.lon], { animate: false });
   el('posOut').textContent = pos.lat.toFixed(6) + ', ' + pos.lon.toFixed(6);
 }
 
@@ -245,6 +256,48 @@ el('goHome').onclick = () => {
   pos = { ...home }; paint();
   send({ lat: home.lat, lon: home.lon, walking: false });
 };
+
+// --- centrar y seguir --------------------------------------------------
+// El mapa no se mueve solo a proposito: si lo arrastras para mirar otra zona,
+// no quiero que te lo devuelva al sitio en el siguiente sondeo. "Seguir" lo
+// activa a peticion.
+el('center').onclick = () => {
+  if (!pos) { el('status').textContent = 'no hay posicion todavia'; return; }
+  map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 17));
+};
+el('follow').onclick = () => {
+  follow = !follow;
+  el('follow').classList.toggle('on', follow);
+  if (follow && pos) map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 17));
+};
+
+// --- emulador ----------------------------------------------------------
+el('emuStart').onclick = async () => {
+  el('emuOut').textContent = 'emulador: arrancando, tarda un par de minutos...';
+  const r = await fetch('/emulator', { method: 'POST' });
+  if (!r.ok) el('emuOut').textContent = 'emulador: ' + (await r.json()).error;
+  emuPoll();
+};
+
+async function emuPoll() {
+  try {
+    const s = await fetch('/emulator').then((r) => r.json());
+    const busy = s.starting === true;
+    el('emuStart').disabled = busy || s.booted === 'yes';
+    if (s.booted === 'yes') {
+      const ok = s.gles === '196609' && s.icd === 'kosmickrisp';
+      el('emuOut').textContent = ok
+        ? 'emulador: listo (' + s.size + ', ES 3.1, kosmickrisp)'
+        : 'emulador: arrancado PERO mal (gles=' + s.gles + ' icd=' + s.icd + '), reinicialo';
+    } else if (busy) {
+      el('emuOut').textContent = 'emulador: ' + (s.log && s.log.length ? s.log[s.log.length - 1] : 'arrancando...');
+    } else {
+      el('emuOut').textContent = 'emulador: apagado';
+    }
+  } catch (e) { el('emuOut').textContent = 'emulador: sin conexion con spoof.py'; }
+}
+emuPoll();
+setInterval(emuPoll, 3000);
 
 // --- persistencia ------------------------------------------------------
 const save = () => localStorage.setItem('joystick',

@@ -28,10 +28,10 @@ Con dos condiciones. La primera: el emulador tiene que arrancarse con
 funciona y cuenta kilometros, pero el avatar no se dibuja y la camara no sigue.
 
 La segunda: hay que apuntar el ICD de Vulkan de ANGLE a **kosmickrisp**, si no
-el juego va a 8 FPS. Con el parche va a 30, que es el tope del propio juego. Es
-una linea, esta en [Instalacion](#instalacion-una-sola-vez).
+el juego va a 8 FPS. Con el parche va a 30, que es el tope del propio juego.
 
-Los comandos estan en [Uso diario](#uso-diario) y el porque en
+Las dos las aplica `./emulator.sh start`, o el boton "Arrancar emulador" de la
+web. Ver [El emulador](#el-emulador), y el porque en
 [Registro de intentos](#registro-de-intentos).
 
 En iPhone no hay nada que hacer, y el resto de esta seccion explica por que.
@@ -96,20 +96,14 @@ simulacion, pero no para Pokemon GO:
    Studio: hace falta pasarle el modo de GPU. El comando esta en
    [Uso diario](#uso-diario).
 3. Dentro del emulador, instala Pokemon GO desde la Play Store.
-4. Apunta el ICD de Vulkan de ANGLE a kosmickrisp, el driver Vulkan sobre Metal
-   que trae el propio SDK. Sin esto el juego va a 8 FPS, con esto a 30:
+4. Aplica los parches de GPU:
 
    ```sh
-   G=~/Library/Android/sdk/emulator/lib64/gles_angle
-   cp $G/vk_swiftshader_icd.json $G/vk_swiftshader_icd.json.orig
-   printf '{"file_format_version": "1.0.0", "ICD": {"library_path": "%s/Library/Android/sdk/emulator/lib64/vulkan/libvulkan_kosmickrisp.dylib", "api_version": "1.3.0"}}\n' "$HOME" > $G/vk_swiftshader_icd.json
+   ./emulator.sh setup
    ```
 
-   Para deshacerlo: `cp $G/vk_swiftshader_icd.json.orig $G/vk_swiftshader_icd.json`.
-
-   **Este fichero vive dentro del SDK, no en el repo.** Cada vez que Android
-   Studio actualice el emulador hay que volver a aplicarlo. Si un dia el juego
-   vuelve a ir a tirones, mira aqui primero.
+`emulator.sh` guarda toda la configuracion que costo averiguar, para no volver a
+pasar por ello. Ver [El emulador](#el-emulador).
 
 `spoof.py` busca `adb` en el `PATH` y, si no esta, en
 `~/Library/Android/sdk/platform-tools/adb`.
@@ -154,33 +148,19 @@ abierta, si matas el proceso se corta la inyeccion.
 
 ### Emulador de Android (la via que funciona con Pokemon GO)
 
-Arranca el emulador desde la terminal, con `-gpu swangle`:
-
-```sh
-~/Library/Android/sdk/emulator/emulator -avd Medium_Phone_2 -gpu swangle -no-snapshot-load
-```
-
-`-gpu swangle` no es opcional: es lo que da OpenGL ES 3.1 al emulador. Sin ES 3.1
-el juego arranca y cuenta kilometros igual, pero el avatar del entrenador no se
-dibuja y la camara no sigue. Comprobar que quedo bien:
-
-```sh
-adb shell getprop ro.opengles.version
-```
-
-`196609` es ES 3.1, correcto. `196608` es ES 3.0, mal, relanza el emulador.
-
-`-cores` no hace falta tocarlo. El renderizado ocurre en el host, no en el
-guest, asi que subir los cores del emulador no da FPS: mide igual con 4, 6 y 8.
-Ademas el maximo real son 8, con 10 el emulador ni arranca
-(`Number of SMP CPUs requested (10) exceeds max CPUs supported by machine
-'mach-virt' (8)`).
-
-Con el emulador ya arrancado:
-
 ```sh
 ./run.sh --android
 ```
+
+Y en la web, boton **"Arrancar emulador"**. O desde la terminal, si prefieres:
+
+```sh
+./emulator.sh start
+```
+
+Las dos cosas hacen lo mismo y son idempotentes: si el emulador ya esta
+arrancado, solo reponen la resolucion. **No arranques el emulador desde el boton
+de Android Studio**: no pasa `-gpu swangle` y el avatar no se dibuja.
 
 Con varios dispositivos en `adb devices`, pasa el serial:
 `./run.sh --android emulator-5554`.
@@ -205,6 +185,70 @@ Antes de nada, comprueba:
 Pokemon GO desde aqui no va a funcionar, sale el error 12. El porque esta en
 [Estado](#estado-en-iphone-no-en-emulador-de-android-si).
 
+## El emulador
+
+Toda la configuracion que hace jugable a Pokemon GO vive **fuera del repo**:
+dentro del SDK de Android y en `~/.android`. Es decir, se pierde si actualizas
+el emulador o borras el AVD. `emulator.sh` la guarda y la vuelve a aplicar.
+
+```sh
+./emulator.sh start     # parchea si hace falta, arranca, espera y pone la resolucion
+./emulator.sh setup     # solo los parches, sin arrancar
+./emulator.sh status    # clave=valor, es lo que lee la web
+./emulator.sh stop      # apaga
+./emulator.sh unpatch   # devuelve el ICD de ANGLE a SwiftShader
+```
+
+`status` en un emulador sano:
+
+```
+avd=Medium_Phone_2
+running=yes
+booted=yes
+serial=emulator-5554
+gles=196609
+size=720x1600
+icd=kosmickrisp
+```
+
+Si `gles` no es `196609` no se dibuja el avatar. Si `icd` no es `kosmickrisp` el
+juego va a 8 FPS en vez de 30.
+
+### Que toca, y por que
+
+| Que | Donde | Por que |
+|---|---|---|
+| `-gpu swangle` | flag de arranque | Da OpenGL ES 3.1. Sin ES 3.1 no se dibuja el avatar ni sigue la camara |
+| ICD de ANGLE a kosmickrisp | `$SDK/emulator/lib64/gles_angle/vk_swiftshader_icd.json` | De fabrica apunta a SwiftShader, que pinta por CPU: 8 FPS. kosmickrisp es Vulkan 1.3 sobre Metal: 30 FPS |
+| `Vulkan = on`, `GLDirectMem = on` | `~/.android/advancedFeatures.ini` | Lo que ya habia. `GuestAngle` tiene que quedar **apagado**: da ES 3.1 pero Unity lo rechaza |
+| `wm size 720x1600`, `wm density 280` | via adb, en cada arranque | El override no sobrevive al reinicio. A resolucion nativa el render se ahoga |
+
+Trampas conocidas:
+
+- **MoltenVK como ICD de ANGLE no vale.** Revienta el emulador al arrancar, le
+  faltan extensiones. Tiene que ser kosmickrisp.
+- **`-cores` no da FPS.** El render ocurre en el host, no en el guest. Mide
+  igual con 4, 6 y 8. Y con 10 ni arranca: el tope de QEMU son 8
+  (`Number of SMP CPUs requested (10) exceeds max CPUs supported by machine 'mach-virt' (8)`),
+  aunque el desplegable de Android Studio te deje poner 6 como maximo.
+- **Bajar mas la resolucion tampoco.** De 720x1600 a 540x1200 no gana nada.
+
+### Si borras el AVD
+
+La definicion esta en `avd/` (`config.ini` y `avd.ini`). `./emulator.sh start`
+recrea el AVD solo si no existe. Necesita la imagen de sistema descargada; si
+falta, el script te da el comando exacto:
+
+```sh
+~/Library/Android/sdk/cmdline-tools/latest/bin/sdkmanager \
+  "system-images;android-37.1;google_apis_playstore_ps16k;arm64-v8a"
+```
+
+Despues hay que entrar en el emulador e instalar Pokemon GO desde la Play Store
+a mano, eso no se puede guionizar.
+
+Para usar otro AVD: `POGO_AVD=MiOtroAvd ./emulator.sh start`, o ponlo en `.env`.
+
 ## Controles
 
 | Accion | Como |
@@ -217,7 +261,14 @@ Pokemon GO desde aqui no va a funcionar, sale el error 12. El porque esta en
 | Fin de ruta | Bucle, Ida y vuelta, o Parar |
 | Fijar casa | Boton "Fijar casa aqui", con la posicion puesta en tu portal |
 | Volver a casa | Boton "Ir a casa" |
+| Centrar el mapa | Boton "Centrar aqui" |
+| Que el mapa te siga | Boton "Seguir" (se queda activado) |
+| Arrancar el emulador | Boton "Arrancar emulador" |
 | Volver al GPS real | Boton "Devolver GPS real" |
+
+El mapa no persigue al marcador por defecto: si lo arrastras para mirar otra
+zona, no te lo devuelve al sitio en el siguiente sondeo. "Seguir" activa el
+perseguimiento cuando lo quieras.
 
 La ruta y la velocidad se guardan en el navegador. Siguen ahi al reabrir.
 

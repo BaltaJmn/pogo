@@ -200,11 +200,62 @@ async def clear_loc(request):
     return JSONResponse({"ok": True})
 
 
+# --- emulador ----------------------------------------------------------
+
+EMU_SH = HERE / "emulator.sh"
+EMU = {"task": None, "log": []}
+
+
+def emu_busy() -> bool:
+    t = EMU["task"]
+    return t is not None and not t.done()
+
+
+async def emu_run(*args: str) -> tuple[int, str]:
+    proc = await asyncio.create_subprocess_exec(
+        str(EMU_SH), *args,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+        # sesion propia: el emulador tiene que sobrevivir a que matemos el servidor
+        start_new_session=True)
+    out, _ = await proc.communicate()
+    return proc.returncode, out.decode(errors="replace").strip()
+
+
+async def emu_status(request):
+    """Estado del emulador, parseado de `emulator.sh status` (clave=valor)."""
+    code, out = await emu_run("status")
+    st = dict(l.split("=", 1) for l in out.splitlines() if "=" in l and not l.startswith("["))
+    st["starting"] = emu_busy()
+    st["log"] = EMU["log"][-12:]
+    if code:
+        st["error"] = out
+    return JSONResponse(st)
+
+
+async def emu_start(request):
+    """Arranca el emulador en segundo plano. El arranque tarda minutos, asi que
+    devolvemos ya y la web sondea /emulator."""
+    if emu_busy():
+        return JSONResponse({"ok": False, "error": "ya se esta arrancando"}, status_code=409)
+
+    async def job():
+        EMU["log"] = ["arrancando..."]
+        code, out = await emu_run("start")
+        EMU["log"] = [l for l in out.splitlines() if l.strip()] or ["sin salida"]
+        if code:
+            EMU["log"].append(f"fallo (codigo {code})")
+
+    EMU["task"] = asyncio.create_task(job())
+    return JSONResponse({"ok": True})
+
+
 app = Starlette(routes=[
     Route("/", index),
     Route("/pos", pos),
     Route("/loc", set_loc, methods=["POST"]),
     Route("/clear", clear_loc, methods=["POST"]),
+    Route("/emulator", emu_status),
+    Route("/emulator", emu_start, methods=["POST"]),
 ])
 
 
