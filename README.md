@@ -574,3 +574,17 @@ E GFXSTREAM: [egl.cpp(1794)] EGL_BAD_CONFIG: no ES 3.1 support
 **Confirmacion del usuario:** el juego arranca pero el personaje sigue sin aparecer.
 
 **Estado:** descartadas hasta ahora tres vias para subir de OpenGL ES 3.0: ANGLE por paquete (carga pero Unity no inicializa), Unity eligiendo Vulkan solo (no lo hace) y forzar Vulkan por argumento (no hay shaders).
+
+### 2026-09-06, tarde 5: correccion, OpenGL NO es la causa raiz
+
+**Correccion de las secciones "tarde 3" y "tarde 4":** alli se concluyo que la falta de avatar venia del cap de OpenGL ES 3.0. Es falso.
+
+**Prueba:** capturas del emulador con el juego en marcha. La pantalla de captura de un Pokemon renderiza perfecta: modelo de Pancham con texturas, sombras, efectos de particulas de la Ultra Ball, escenario 3D completo. El mapa tambien renderiza entero: carreteras, PokeParadas, gimnasios, contadores de incursion, icono del tiempo, iconos de objetos, HUD con nivel 41 y el compañero Gardevoir.
+
+**Reinterpretacion de los logs EGL:** los errores `EGL_BAD_CONFIG: no ES 3.2 support` y `EGL_BAD_CONFIG: no ES 3.1 support` son solo el sondeo normal de Unity buscando la version mas alta antes de caer a ES 3.0. El juego funciona en ES 3.0 sin problema.
+
+**Otra lectura equivocada:** las siluetas negras en la barra inferior no eran un fallo de texturas. Son las siluetas de Pokemon no vistos que el juego dibuja asi a proposito.
+
+**Observacion nueva sin explicar todavia:** en el mapa aparece una cadena de Pokemon identicos dibujados enormes en la zona baja de la pantalla, justo donde deberia estar el avatar. Sospecha: son spawns acumulados en la posicion del jugador (incienso) tapando el avatar, no un fallo de render.
+
+**Estado:** la investigacion vuelve al lado de la localizacion y del estado del juego, no del GPU.
