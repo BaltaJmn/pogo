@@ -350,9 +350,10 @@ mitad de otra.
 
 ## Buscar sitio
 
-Caja de busqueda en la barra lateral, encima de Lugares. Escribes el nombre de un
-sitio (calle, plaza, parque, monumento, lo que sea) y la web te lo encuentra en el
-mapa.
+Caja de busqueda encima del mapa, justo bajo los botones "Centrar" y "Seguir".
+Escribes el nombre de un sitio (calle, plaza, parque, monumento, lo que sea) y la
+web te lo encuentra en el mapa. El buscador vive ahi porque mirar el mapa es lo que
+importa cuando buscas; la barra lateral queda para lo que es configuracion.
 
 Usa Nominatim, el geocodificador de OpenStreetMap
 (<https://nominatim.openstreetmap.org/search>). No necesita clave de API, no suma
@@ -378,6 +379,52 @@ tres primeros trozos y el resto queda en el tooltip.
 
 Los resultados no se guardan en ningun sitio. Si quieres conservar uno, salta o anda
 hasta alli y guarda la posicion con "Guardar esta posicion" de la seccion Lugares.
+
+### Candidatos a parada
+
+El boton "Candidatos a parada" busca en el trozo de mapa que estas viendo por
+posibles ubicaciones de pokeparadas.
+
+**Advertencia importante:** no existe ninguna API publica de pokeparadas ni de
+gimnasios. Lo que circula por internet son scrapers de la red privada del juego:
+violan los terminos de servicio de Niantic y ponen tu cuenta en riesgo. Esto no es
+eso.
+
+Lo que hace es consultar Overpass, la API de consultas de OpenStreetMap
+(<https://overpass-api.de/api/interpreter>). Gratis y sin clave de API: es la
+puerta publica a los datos de OSM.
+
+Por que sirve de algo: las paradas reales salen de portales de Ingress, y esos
+portales salen de arte urbano, monumentos, fuentes, iglesias, parques infantiles y
+pistas deportivas. Eso es justo lo que se le pide a OpenStreetMap. La idea es que
+si hay algo interesante en el mundo real, alguien lo mapea en OSM y Ingress lo
+recoge de alli.
+
+Las etiquetas que consulta son: `tourism=artwork`, cualquier cosa bajo `historic`,
+`amenity` en `place_of_worship`, `fountain`, `library`, `post_office`, `townhall`,
+`theatre`, `community_centre`, y `leisure` en `playground`, `pitch`, `park`,
+`fitness_station`. Consulta tanto nodos como recintos (poligonos), pidiendo el
+centro de cada recinto con `out center` para que Overpass te de un punto unico.
+
+**Los candidatos son candidatos, no paradas reales.** Habra POI que aparezcan aqui
+y no sean parada. Y habra paradas reales que no esten en OpenStreetMap. Como brujula
+para decidir a que barrio ir y donde buscar, sirve. Como mapa fiel de paradas, no.
+
+**Pide zoom 14 como minimo.** Por debajo Overpass rechaza la consulta o tarda
+mucho: mide el area en tiempo de CPU, y debajo del zoom 14 el trozo de mapa es
+demasiado grande. Ademas, salen tantos puntos que no dicen nada.
+
+El boton funciona de interruptor: pulsa una vez y aparecen los candidatos. Pulsa otra
+vez y se van. El texto del boton cambia entre "Candidatos a parada" y "Ocultar
+candidatos", para que veas el estado sin necesidad de otro control. Si cambias de
+zoom o arrastras el mapa, los puntos siguen ahi; si sacas zoom por debajo de 14 el
+boton se desactiva (no se pueden pedir candidatos a ese zoom). Cuando vuelves a zoom
+14 el boton se reactiva.
+
+Los candidatos se pintan en dorado, para no confundirlos con los resultados de
+Nominatim (magenta) ni con los lugares guardados. Click en cualquier candidato abre
+el mismo popup que un click en el mapa, con los botones "Andar", "Saltar" y "Guardar".
+Si el sitio tiene nombre en OpenStreetMap, el campo de guardar viene ya relleno con el.
 
 ## Lugares
 
@@ -544,7 +591,7 @@ sigues andando. Puedes recargarla a mitad de ruta y no se entera nadie.
 | `spoof.py` | El servidor. Lleva el movimiento, inyecta la posicion y sirve la web. Todo el estado vive aqui |
 | `test_spoof.py` | Los 9 tests del calculo de movimiento |
 | `run.sh` | Lo que arrancas. Levanta `spoof.py` con las dependencias que encuentre |
-| `index.html` | El mando: mapa, rosa de los vientos, rutas, lugares y buscador. No calcula movimiento, solo manda intenciones y pinta |
+| `index.html` | El mando: mapa, rosa de los vientos, rutas, lugares, buscador de Nominatim y candidatos de Overpass. No calcula movimiento, solo manda intenciones y pinta |
 | `emulator.sh` | Arranca el emulador con la configuracion que hace jugable al juego, y la repara si se perdio |
 | `avd/` | La definicion del emulador, por si lo borras |
 
