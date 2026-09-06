@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Joystick GPS y rutas para iPhone (iOS 17+) via pymobiledevice3.
+"""Joystick GPS y rutas para un emulador de Android.
 
 Levanta una web local. El movimiento se calcula aqui, un fix por segundo, y la
 web solo manda la intencion: hacia donde y a que velocidad. Antes el bucle vivia
@@ -19,13 +19,6 @@ import uvicorn
 from starlette.applications import Starlette
 from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
-
-from pymobiledevice3.exceptions import AlreadyMountedError
-from pymobiledevice3.remote.native_tunnel import establish_native_rsd
-from pymobiledevice3.remote.remote_service_discovery import RemoteServiceDiscoveryService
-from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
-from pymobiledevice3.services.dvt.instruments.location_simulation import LocationSimulation
-from pymobiledevice3.services.mobile_image_mounter import auto_mount
 
 HERE = Path(__file__).resolve().parent
 ADB = shutil.which("adb") or str(Path.home() / "Library/Android/sdk/platform-tools/adb")
@@ -260,37 +253,15 @@ app = Starlette(routes=[
 
 
 async def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--udid", help="UDID del movil, si tienes varios conectados")
-    ap.add_argument("--rsd", nargs=2, metavar=("HOST", "PORT"),
-                    help="usar un tunel ya abierto en vez de abrir el nativo")
-    ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--android", nargs="?", const="", metavar="SERIAL",
-                    help="usar un emulador de Android en vez del iPhone. Sin valor, "
+    ap = argparse.ArgumentParser(description="Joystick GPS para un emulador de Android")
+    ap.add_argument("serial", nargs="?", default="", metavar="SERIAL",
+                    help="serial del emulador (p.ej. emulator-5554). Sin valor, "
                          "el unico dispositivo que vea adb")
+    ap.add_argument("--port", type=int, default=8765)
     args = ap.parse_args()
 
-    if args.android is not None:
-        print(f"emulador android {args.android or '(unico)'}")
-        await serve(AdbEmulator(args.android), args.port)
-        return
-
-    if args.rsd:
-        rsd = RemoteServiceDiscoveryService((args.rsd[0], int(args.rsd[1])))
-        await rsd.connect()
-    else:
-        rsd = await establish_native_rsd(serial=args.udid)
-
-    print(f"conectado a {rsd.udid} ({rsd.product_type})")
-
-    # La DeveloperDiskImage se desmonta al reiniciar el movil. Sin ella no hay DVT.
-    try:
-        await auto_mount(rsd)
-        print("DeveloperDiskImage montada")
-    except AlreadyMountedError:
-        pass
-    async with DvtProvider(rsd) as dvt, LocationSimulation(dvt) as loc:
-        await serve(loc, args.port)
+    print(f"emulador android {args.serial or '(unico)'}")
+    await serve(AdbEmulator(args.serial), args.port)
 
 
 async def serve(loc, port: int) -> None:

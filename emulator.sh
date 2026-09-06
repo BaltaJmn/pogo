@@ -73,8 +73,11 @@ ensure_avd() {
     return
   fi
   [ -d "$DIR/avd" ] || die "no encuentro $DIR/avd con la definicion del AVD"
-  if ! "$SDK/cmdline-tools/latest/bin/sdkmanager" --list_installed 2>/dev/null | grep -q "google_apis_playstore_ps16k"; then
-    die "falta la imagen de sistema. Instalala primero:
+  if [ ! -d "$SDK/system-images/android-37.1/google_apis_playstore_ps16k/arm64-v8a" ]; then
+    die "falta la imagen de sistema. Instalala desde Android Studio:
+  Settings > Languages & Frameworks > Android SDK > SDK Platforms,
+  marca \"Show package details\" y elige la imagen arm64 con Play Store.
+Con cmdline-tools instalado tambien vale:
   $SDK/cmdline-tools/latest/bin/sdkmanager \"$SYSIMAGE\""
   fi
   say "recreando AVD $AVD desde $DIR/avd"

@@ -1,27 +1,23 @@
 # pogo
 
-Joystick GPS y rutas. Levanta una web local en el Mac y controla la ubicacion
-que reporta el dispositivo: mando analogico, rutas que se recorren solas y
-velocidad configurable. Sirve para un iPhone por wifi o para un emulador de
-Android.
+Joystick GPS para Pokemon GO en un emulador de Android. Levanta una web local
+en el Mac y controla la ubicacion que reporta el emulador: mando analogico,
+rutas que se recorren solas, lugares guardados y velocidad configurable.
 
-Sin jailbreak, sin root, sin cable, sin app modificada. Dos backends, misma web
-y mismos controles:
+Sin root, sin app de mock location y sin tocar el juego. La posicion entra por
+`adb emu geo fix`, que alimenta el GPS emulado: para ese Android es el unico GPS
+que existe, asi que no hay ninguna marca que delate nada.
 
-- **Emulador de Android**, por `adb emu geo fix`, que alimenta el GPS emulado.
-  Es la via que funciona con Pokemon GO.
-- **iPhone por wifi**, por el servicio de desarrollador de iOS (DVT), el mismo
-  que usa Xcode en Debug > Simulate Location. Sirve para Apple Maps y demas,
-  pero no para Pokemon GO, ver [Estado](#estado-en-iphone-no-en-emulador-de-android-si).
+Probado en macOS sobre Apple M2 Pro contra un AVD arm64 con Google Play.
 
-Probado en macOS sobre Apple M2 Pro, contra un AVD `sdk_gphone16k_arm64` y
-contra un iPhone XR con iOS 18.6.2 por wifi.
+> Hubo una via para iPhone por wifi y se quito: el juego la detecta siempre.
+> Esta archivada en [docs/ios.md](docs/ios.md) por si se retoma.
 
-## Estado: en iPhone no, en emulador de Android si
+## Estado
 
 Pokemon GO **funciona con el emulador de Android**: arranca, carga el mapa, anda
 con el joystick, y el avatar y la camara siguen al personaje en vivo. Ver
-[Uso diario](#uso-diario), opcion `--android`.
+[Uso diario](#uso-diario).
 
 Con dos condiciones. La primera: el emulador tiene que arrancarse con
 **`-gpu swangle`**. Con el modo de GPU por defecto de Android Studio el juego
@@ -34,24 +30,7 @@ Las dos las aplica `./emulator.sh start`, o el boton "Arrancar emulador" de la
 web. Ver [El emulador](#el-emulador), y el porque en
 [Registro de intentos](#registro-de-intentos).
 
-En iPhone no hay nada que hacer, y el resto de esta seccion explica por que.
-
-Probado el 2026-09-06 en iPhone XR con iOS 18.6.2. Nada mas abrir el juego sale
-"Failed to detect location (12)". La distancia da igual: falla tambien con la
-coordenada puesta a 100 metros de la posicion real.
-
-En iOS 17 en adelante el unico canal para inyectar posicion es
-`com.apple.instruments.server.services.LocationSimulation`, el mismo que usa
-Xcode en Debug > Simulate Location. CoreLocation marca esas posiciones con
-`CLLocation.sourceInformation.isSimulatedBySoftware = true`. La marca la pone
-`locationd`: no viaja en lo que mandamos nosotros y no se puede quitar desde el
-Mac. Apple Maps no la consulta, por eso te sigue. Niantic si.
-
-Saltarselo pide jailbreak o binario del juego modificado, las dos cosas fuera de
-lo que hace este repo. El iPhone XR es A12, asi que checkm8 tampoco aplica.
-
-El resto sigue funcionando: Apple Maps y cualquier app que no mire esa marca.
-El detalle de lo probado esta en [Registro de intentos](#registro-de-intentos).
+A 720x1600 el juego va a 30 FPS, que es su propio tope.
 
 ## Aviso
 
@@ -65,125 +44,147 @@ sanciones es de tres avisos:
 La deteccion es retroactiva. Usa una cuenta desechable de Pokemon Trainer Club,
 nunca tu cuenta principal ni tu Google.
 
-## Requisitos
+## Empezar de cero
 
-Comunes:
+Guia completa en un Mac limpio. Si ya tienes Android Studio con un emulador,
+salta al paso 4.
 
-- macOS.
-- [uv](https://docs.astral.sh/uv/) instalado.
+### Lo que hace falta
 
-Para el emulador de Android, que es la via que funciona con Pokemon GO:
+- **Un Mac con Apple Silicon** (M1 o posterior). La imagen del emulador es arm64
+  y en un Mac Intel no arranca.
+- **Unos 20 GB libres.** El SDK y la imagen del sistema ocupan lo suyo.
+- **Una cuenta desechable de Pokemon Trainer Club.** Nunca la principal, ver
+  [Aviso](#aviso).
 
-- Android Studio, con el SDK y las platform-tools.
-- Un AVD arm64 con Google Play. Probado con `Medium_Phone_2`
-  (`sdk_gphone16k_arm64`) sobre un Apple M2 Pro.
+### 1. Android Studio
 
-Para iPhone, que sirve para Apple Maps y cualquier app que no mire la marca de
-simulacion, pero no para Pokemon GO:
+Bajalo de <https://developer.android.com/studio>, arrastralo a Aplicaciones y
+abrelo. El asistente de la primera vez descarga el SDK, dale a todo que si.
 
-- Mac y iPhone en la misma red wifi. El tunel nativo sin root es exclusivo de
-  macOS.
-- iPhone con iOS 17 o superior.
-- Modo Desarrollador activo en el iPhone.
-- El iPhone emparejado con este Mac alguna vez (vale un emparejamiento antiguo).
-
-## Instalacion (una sola vez)
-
-### Emulador de Android
-
-1. Instala Android Studio y crea un AVD arm64 con Google Play.
-2. Arranca el emulador **desde la terminal**, no desde el boton de Android
-   Studio: hace falta pasarle el modo de GPU. El comando esta en
-   [Uso diario](#uso-diario).
-3. Dentro del emulador, instala Pokemon GO desde la Play Store.
-4. Aplica los parches de GPU:
-
-   ```sh
-   ./emulator.sh setup
-   ```
-
-`emulator.sh` guarda toda la configuracion que costo averiguar, para no volver a
-pasar por ello. Ver [El emulador](#el-emulador).
-
-`spoof.py` busca `adb` en el `PATH` y, si no esta, en
-`~/Library/Android/sdk/platform-tools/adb`.
-
-### iPhone
-
-#### 1. Instalar pymobiledevice3
+Al terminar, comprueba que el SDK esta donde toca:
 
 ```sh
-uv tool install pymobiledevice3
+ls ~/Library/Android/sdk/platform-tools/adb ~/Library/Android/sdk/emulator/emulator
 ```
 
-#### 2. Activar Modo Desarrollador en el iPhone
+Si eso imprime las dos rutas, vas bien. Si dice "No such file or directory",
+abre Android Studio y ve a **Settings > Languages & Frameworks > Android SDK**,
+pestaña **SDK Tools**, y marca "Android SDK Platform-Tools" y "Android Emulator".
 
-Ajustes > Privacidad y seguridad > Modo Desarrollador > activar.
-El movil se reinicia. Tras el reinicio confirma el dialogo.
+### 2. La imagen del emulador
 
-Si no aparece la opcion, conecta el movil por cable a un Mac con Xcode una vez.
-El menu aparece despues del primer emparejamiento.
+En **Settings > Languages & Frameworks > Android SDK**, pestaña **SDK
+Platforms**, marca abajo **"Show package details"** y elige la imagen
+**arm64-v8a con Google Play** de Android 37.1 (`google_apis_playstore_ps16k`).
+Aplicar y esperar, son varios GB.
 
-#### 3. Averiguar el UDID del movil
+Tiene que ser la de **Play Store**: sin ella no puedes instalar Pokemon GO
+dentro del emulador.
+
+Comprobar:
 
 ```sh
-pymobiledevice3 remote browse | grep -E '"(udid|model|name)"'
+ls ~/Library/Android/sdk/system-images/android-37.1/google_apis_playstore_ps16k/arm64-v8a
 ```
 
-Busca la linea con tu modelo. El iPhone XR es `iPhone11,8`.
+### 3. El emulador
 
-#### 4. Crear el fichero .env
+Crea el AVD desde Android Studio (**Device Manager > Create Virtual Device >
+Medium Phone**, y elige la imagen del paso anterior), o deja que lo cree el
+script del paso 5, que trae la definicion guardada en `avd/`.
+
+### 4. El repo
 
 ```sh
-echo 'POGO_UDID=00008020-XXXXXXXXXXXXXXXX' > .env
+git clone https://github.com/BaltaJmn/pogo.git ~/pogo
+cd ~/pogo
 ```
 
-Esta en `.gitignore`, no se sube al repo. Solo hace falta si tienes mas de un
-dispositivo Apple en la red; con uno solo, `run.sh` lo encuentra igual.
-
-## Uso diario
-
-La web es la misma en los dos casos: <http://127.0.0.1:8765>. Deja la terminal
-abierta, si matas el proceso se corta la inyeccion.
-
-### Emulador de Android (la via que funciona con Pokemon GO)
-
-```sh
-./run.sh --android
-```
-
-Y en la web, boton **"Arrancar emulador"**. O desde la terminal, si prefieres:
-
-```sh
-./emulator.sh start
-```
-
-Las dos cosas hacen lo mismo y son idempotentes: si el emulador ya esta
-arrancado, solo reponen la resolucion. **No arranques el emulador desde el boton
-de Android Studio**: no pasa `-gpu swangle` y el avatar no se dibuja.
-
-Con varios dispositivos en `adb devices`, pasa el serial:
-`./run.sh --android emulator-5554`.
-
-No hace falta ni root ni app de mock location: `adb emu geo fix` alimenta el GPS
-emulado, que para el sistema es el de verdad.
-
-### iPhone (Apple Maps y demas, no Pokemon GO)
+### 5. Arrancar
 
 ```sh
 ./run.sh
 ```
 
-`run.sh` abre el tunel, monta la DeveloperDiskImage si hace falta y levanta la
-web.
+Si te dice que faltan `starlette` y `uvicorn`, instala [uv](https://docs.astral.sh/uv/)
+y `run.sh` se encarga solo a partir de ahi:
 
-Antes de nada, comprueba:
+```sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
 
-1. iPhone desbloqueado y en la misma wifi que el Mac.
-2. Abre Apple Maps en el movil: debe mostrarte donde diga la web, no donde estas.
+O con pip, si lo prefieres:
 
-Pokemon GO desde aqui no va a funcionar, sale el error 12. El porque esta en
-[Estado](#estado-en-iphone-no-en-emulador-de-android-si).
+```sh
+python3 -m pip install starlette uvicorn
+```
+
+Abre <http://127.0.0.1:8765> y pulsa **"Arrancar emulador"**. Tarda un par de
+minutos la primera vez. El boton aplica los parches de GPU, arranca el emulador
+con la configuracion correcta y le pone la resolucion.
+
+### 6. Pokemon GO
+
+Dentro del emulador, abre la Play Store, inicia sesion con una cuenta de Google
+cualquiera e instala Pokemon GO. Luego entra al juego **con la cuenta PTC
+desechable**, no con la de Google.
+
+Esto hay que hacerlo a mano, no se puede guionizar.
+
+### 7. Comprobar que quedo bien
+
+```sh
+./emulator.sh status
+```
+
+Tiene que decir esto:
+
+```
+avd=Medium_Phone_2
+running=yes
+booted=yes
+serial=emulator-5554
+gles=196609
+size=720x1600
+icd=kosmickrisp
+```
+
+`gles` distinto de `196609` significa que no vas a ver tu avatar. `icd` distinto
+de `kosmickrisp` significa que el juego ira a 8 FPS en vez de 30. En los dos
+casos, `./emulator.sh stop && ./emulator.sh start`.
+
+`spoof.py` busca `adb` en el `PATH` y, si no esta, en
+`~/Library/Android/sdk/platform-tools/adb`.
+
+## Uso diario
+
+```sh
+./run.sh
+```
+
+Abre <http://127.0.0.1:8765>. Deja la terminal abierta: si matas el proceso se
+corta la inyeccion y el emulador se queda en la ultima coordenada.
+
+Si el emulador no esta arrancado, pulsa **"Arrancar emulador"** en la web. O
+desde la terminal:
+
+```sh
+./emulator.sh start
+```
+
+Las dos cosas hacen lo mismo y son idempotentes: con el emulador ya arrancado,
+solo reponen la resolucion.
+
+**No lo arranques desde el boton de play de Android Studio.** No pasa
+`-gpu swangle`, y sin eso el juego funciona y cuenta kilometros pero no dibuja
+tu avatar ni mueve la camara.
+
+Con varios emuladores abiertos, pasa el serial que salga en `adb devices`:
+
+```sh
+./run.sh emulator-5554
+```
 
 ## El emulador
 
@@ -330,10 +331,6 @@ lejana, ese salto tambien tiene cooldown antes de poder hacer acciones.
 
 ## Reglas de Pokemon GO
 
-> Esto aplica jugando desde el emulador de Android, que es donde funciona. Desde
-> iPhone da igual, el juego ni arranca, ver
-> [Estado](#estado-en-iphone-no-en-emulador-de-android-si).
-
 ### Velocidad
 
 Por encima de **10.5 km/h** el juego deja de contar la distancia. Para incubar
@@ -387,10 +384,11 @@ El juego no sabe donde estas. Sabe lo que le cuenta el sistema operativo. Este
 proyecto le miente al sistema operativo, y el juego se lo cree porque no tiene
 forma de distinguirlo.
 
-Ahi esta la diferencia entre el emulador y el iPhone, y es toda la historia del
-proyecto: en el emulador la mentira entra por el mismo sitio por el que entraria
-un GPS de verdad, asi que es indistinguible. En iOS entra por una puerta lateral
-que deja marca, y Niantic mira la marca. Por eso este repo acabo en Android.
+Y ahi esta el porque de que esto sea Android y no iPhone, que es toda la
+historia del proyecto: en el emulador la mentira entra por el mismo sitio por el
+que entraria un GPS de verdad, asi que es indistinguible. En iOS entra por una
+puerta lateral que deja marca, y Niantic mira la marca. El detalle esta en
+[docs/ios.md](docs/ios.md).
 
 ### Que pasa cuando arrastras la aguja
 
@@ -403,8 +401,7 @@ que deja marca, y Niantic mira la marca. Por eso este repo acabo en Android.
 3. **Le suma ruido de +-3 metros.** Un GPS real nunca da dos lecturas identicas.
    Una traza perfectamente recta y perfectamente regular no la produce ningun
    telefono.
-4. **Inyecta la coordenada.** En el emulador, `adb emu geo fix <lon> <lat>`. En
-   iPhone, el canal DVT de Xcode.
+4. **Inyecta la coordenada** con `adb emu geo fix <lon> <lat>`.
 5. **Android se la entrega a las apps como si viniera de un satelite.** No hay
    "mock location" de por medio, no hace falta root, y no hay bandera que
    delate nada: `geo fix` alimenta el GPS emulado, que para ese Android es el
@@ -427,6 +424,7 @@ sigues andando. Puedes recargarla a mitad de ruta y no se entera nadie.
 | Fichero | Que hace |
 |---|---|
 | `spoof.py` | El servidor. Lleva el movimiento, inyecta la posicion y sirve la web. Todo el estado vive aqui |
+| `run.sh` | Lo que arrancas. Levanta `spoof.py` con las dependencias que encuentre |
 | `index.html` | El mando: mapa, rosa de los vientos, rutas y lugares. No calcula movimiento, solo manda intenciones y pinta |
 | `emulator.sh` | Arranca el emulador con la configuracion que hace jugable al juego, y la repara si se perdio |
 | `avd/` | La definicion del emulador, por si lo borras |
@@ -436,7 +434,7 @@ sigues andando. Puedes recargarla a mitad de ruta y no se entera nadie.
 
 Casa, los lugares guardados y la ruta viven en el `localStorage` del navegador.
 No se commitean, no se mandan a ningun servidor y no se buscan en ningun
-geocodificador. El UDID del iPhone vive en `.env`, que esta en `.gitignore`.
+geocodificador.
 
 Este repo es publico. Esa es justo la razon.
 
@@ -450,32 +448,21 @@ Quedo un proceso vivo de una ejecucion anterior:
 lsof -ti tcp:8765 | xargs kill
 ```
 
-**`Device not found` o el tunel no levanta**
+**El emulador arranca pero no se ve mi avatar**
 
-- iPhone desbloqueado y en la misma wifi.
-- Comprueba que aparece: `pymobiledevice3 remote browse`
-- Si no aparece, conectalo por cable una vez y acepta "Confiar en este
-  ordenador".
+Le falta OpenGL ES 3.1. Comprueba con `./emulator.sh status` que `gles=196609`.
+Si pone `196608`, lo arrancaste sin `-gpu swangle`, casi seguro desde el boton
+de Android Studio. Cierralo y usa `./emulator.sh start`.
 
-**Errores de DVT o de servicio no encontrado**
+**El juego va a tirones**
 
-Falta la DeveloperDiskImage. `run.sh` la monta sola, pero se puede forzar:
+`./emulator.sh status` y mira `icd`. Si pone `swiftshader` en vez de
+`kosmickrisp`, el parche se perdio, normalmente porque Android Studio actualizo
+el emulador. `./emulator.sh setup` lo repone.
 
-```sh
-pymobiledevice3 remote start-tunnel --udid TU_UDID --script-mode
-```
+**`adb: no devices/emulators found`**
 
-Con la direccion y puerto que imprime:
-
-```sh
-pymobiledevice3 mounter auto-mount --rsd DIRECCION PUERTO
-```
-
-La DDI se desmonta cada vez que reinicias el movil. `run.sh` la vuelve a montar.
-
-**La ubicacion no vuelve a la real**
-
-Boton "Devolver GPS real". Si no, reinicia el movil.
+El emulador no esta arrancado, o aun no termino de arrancar. `./emulator.sh status`.
 
 ## Tests
 
@@ -483,11 +470,10 @@ Cubren lo unico que puede romperse en silencio: el orden `lon`/`lat` que pide
 `adb emu geo fix` y el motor de movimiento del servidor.
 
 ```sh
-PYTHONPATH="$HOME/.local/share/uv/tools/pymobiledevice3/lib/python3.13/site-packages" uvx pytest test_spoof.py -q
+uvx --with starlette --with uvicorn pytest test_spoof.py -q
 ```
 
-El `PYTHONPATH` hace falta porque `spoof.py` importa `pymobiledevice3`, que vive
-en el entorno de la herramienta de uv y no en el del test.
+Sin uv, con pytest y las dependencias ya instaladas: `pytest test_spoof.py -q`.
 
 ## Cambiar el puerto
 
@@ -498,143 +484,6 @@ en el entorno de la herramienta de uv y no en el del test.
 ## Registro de intentos
 
 Lo probado y como acabo, para no repetir callejones sin salida entre sesiones.
-
-### 2026-09-06
-
-**Entorno verificado.** pymobiledevice3 11.5.0, uvicorn 0.52.4, starlette 1.6.0.
-Todas las APIs que usa `spoof.py` existen con la firma esperada. El tunel nativo
-y `POST /loc` funcionan contra el iPhone XR (`iPhone11,8`) y contra el iPhone 16
-Pro (`iPhone17,1`). El backend no falla en nada.
-
-**Descartado: el Modo Desarrollador y la DeveloperDiskImage.** Con el tunel
-abierto y la DDI montada, pero sin inyectar ninguna coordenada, Pokemon GO entra
-sin error. Lo que detecta es la coordenada, no el entorno de desarrollo.
-
-**Descartado: incoherencia entre GPS e IP u operadora.** Coordenada puesta a unos
-100 metros de la posicion real, misma wifi y misma cobertura: error 12 igual, al
-instante. No es un control de distancia ni de coherencia con la red.
-
-**Descartado con el log del propio movil: no es un problema de permisos.** Antes
-de dar por buena la teoria de la deteccion habia que descartar lo aburrido, que
-es que Pokemon GO no tuviera permiso de ubicacion o lo tuviera en precision
-reducida. Capturando `pymobiledevice3 syslog live` mientras se abre el juego,
-`locationd` registra al cliente asi:
-
-```
-Authorization = 4;                          (= Always)
-"registration":"AllowedAlways"
-InUseLevel = 5;
-LocationTechnologiesInUse = (1, 10, 4, 6);
-```
-
-Permiso concedido y en precision completa. El unico `Denied` de toda la captura
-es de otro servicio y despista:
-
-```
-Handling access request to kTCCServiceUserTracking, from Sub:{com.nianticlabs.pokemongo}
-  ... ReqResult(Auth Right: Denied (User Consent), promptType: 1, DB Action:None)
-```
-
-`kTCCServiceUserTracking` es App Tracking Transparency, o sea publicidad e IDFA.
-No tiene nada que ver con la ubicacion.
-
-**Confirmado en el log: iOS marca la posicion y el juego la suelta.** En la misma
-captura, `locationd` etiqueta cada fix como simulado y lo anuncia al sistema:
-
-```
-@ClxSimulated, Fix, 1, ll, <private>, <private>, acc, 5.00
-LocationProvider,Sending through simulated location for <private>
-CL: CLLocationController::onSimulatedNotification
-```
-
-Y el cliente de Niantic la recibe y deja de recibirla:
-
-```
-{"msg":"stopped receiving location information", "client":"icom.nianticlabs.pokemongo:"}
-"oldArrowState":"ReceivingLocationInformation", "newArrowState":"RequestingLocationInformation"
-```
-
-Recibe y suelta. Eso es el error 12 visto desde dentro. Con el permiso descartado
-por el propio log, la marca de simulacion es la unica explicacion que queda en
-pie. Sigue siendo inferencia sobre el comportamiento de Niantic, no codigo suyo.
-
-**Descartado: el servicio antiguo `com.apple.dt.simulatelocation`.** Es un canal
-lockdown distinto al de Instruments, y ademas la posicion aguanta con la sesion
-cerrada, asi que valia la pena mirarlo. Apple lo quito en iOS 17:
-
-```
-pymobiledevice3.exceptions.InvalidServiceError: No such service: com.apple.dt.simulatelocation
-```
-
-Se probo con un flag `--service dt` en `spoof.py`, revertido despues para no
-dejar codigo muerto.
-
-**Descartado sin escribir codigo: una app de iOS propia que haga de joystick.**
-No sirve. El sandbox de iOS no deja que una app inyecte ubicacion en otra, no
-existe el equivalente al mock location provider de Android. La marca la pone
-`locationd` para todo el sistema mientras la simulacion esta activa, asi que una
-app propia leeria la posicion igual de marcada. Lo unico que aportaria es
-diagnostico: leer `CLLocation.sourceInformation.isSimulatedBySoftware` y medir lo
-que aqui esta deducido por descarte. No abre ninguna via nueva.
-
-**Descartado: `com.apple.coredevice.locationservice`.** Enumerando los 60
-servicios que publica el movil por RSD, es el unico canal de ubicacion aparte del
-de Instruments. Responde bien, pero devuelve los escenarios de siempre:
-
-```
-{"scenarios": [{"name": "City Run"}, {"name": "City Bicycle Ride"},
-               {"name": "Apple"}, {"name": "Freeway Drive"}]}
-```
-
-Son los presets de Debug > Simulate Location de Xcode. Es el mismo feature con
-otro transporte, CoreDevice en vez de DTX, asi que la posicion sale marcada
-igual. `devicectl` de Xcode ni siquiera expone el subcomando. No hay un tercer
-canal de ubicacion en iOS.
-
-**Android, emulador: funciona.** Backend nuevo en `spoof.py`, opcion `--android`,
-que sustituye la inyeccion de pymobiledevice3 por `adb emu geo fix`. La web, las
-rutas, el joystick y la persistencia se reutilizan tal cual. Comprobado sirviendo
-37.8859, -4.7658 desde la web y leyendo el sistema:
-
-```
-last location=Location[gps 37.885898,-4.765798 hAcc=5.0 ...]
-last location=Location[fused 37.885898,-4.765798 ...]
-```
-
-Proveedor `gps` y `fused`, sin marca de mock, porque no es un mock provider: es el
-GPS emulado. El movimiento tambien cuadra: 10 pasos de 10 metros al norte dejan
-la latitud en 37.885897 partiendo de 37.884998, o sea 100.07 metros, con la
-longitud intacta. Ojo, `adb emu geo fix` pide **longitud primero**, hay un test en
-`test_spoof.py` para eso.
-
-**Android, emulador: Pokemon GO tambien funciona.** Predije que Play Integrity lo
-tumbaria y me equivoque. En un emulador arm64 de Android Studio sobre Apple
-Silicon (`sdk_gphone16k_arm64`) el juego arranca, entra en la cuenta, carga el
-mapa con paradas y gimnasios, y responde al joystick: andando 50 metros a paso
-humano salto un encuentro salvaje. Ningun error 12.
-
-El motivo es el de siempre, visto del derecho: `adb emu geo fix` no es un mock
-provider, alimenta el GPS emulado. El sistema sirve esa posicion como una
-normal, sin `isMock` y sin nada equivalente a `isSimulatedBySoftware`. No hay
-marca que detectar.
-
-En movil Android real sin root la cosa cambia: ahi la inyeccion por `adb` va por
-test provider y si marca `isMock`, que es justo lo que Niantic lee. El emulador
-se libra por no tener GPS de verdad.
-
-**Conclusion.** iOS cerrado. Los dos unicos canales de ubicacion del sistema son
-el mismo feature de Xcode, y ese feature va marcado. Lo que queda esta todo fuera
-de lo que hace este repo:
-
-- Jailbreak: no hay para el iPhone XR con iOS 18.6.2. El XR es A12 y checkm8
-  llega hasta A11. TrollStore pide iOS 17.0 o anterior.
-- Binario del juego modificado o metido en un contenedor con hooks: rompe la
-  premisa de "sin app modificada" y es terreno de copyright.
-- Emitir señal GPS falsa con un SDR: transmitir en las bandas GNSS es ilegal y
-  afecta a cualquiera que este cerca. Descartado de plano.
-
-La unica via viva es portarlo a Android con root y ocultacion de mock location,
-que es otro proyecto y donde la deteccion tambien pelea.
 
 ### 2026-09-06, tarde: el juego no sigue la posicion en vivo
 
@@ -938,7 +787,8 @@ GLES: Google (Google Inc. (Google)), Android Emulator OpenGL ES Translator
 Arrancado con `-avd Medium_Phone_2 -gpu swangle -no-snapshot-load`.
 
 **Estado del proyecto:** cerrado y funcionando en emulador de Android. iOS
-descartado con evidencia. Los 8 tests de `test_spoof.py` pasan.
+descartado con evidencia, archivada en [docs/ios.md](docs/ios.md). Los 8 tests
+de `test_spoof.py` pasan.
 
 **Nota de metodo, error cometido.** En una sesion anterior se lanzo un script de
 diagnostico llamando a `establish_native_rsd()` sin pasar UDID. Cogio el primer
