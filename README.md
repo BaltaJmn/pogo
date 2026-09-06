@@ -348,6 +348,37 @@ Cada ruta de la lista muestra lo que mide y trae dos cosas:
 Cargar una ruta la deja siempre en el punto 1, aunque vinieras de una pausa a
 mitad de otra.
 
+## Buscar sitio
+
+Caja de busqueda en la barra lateral, encima de Lugares. Escribes el nombre de un
+sitio (calle, plaza, parque, monumento, lo que sea) y la web te lo encuentra en el
+mapa.
+
+Usa Nominatim, el geocodificador de OpenStreetMap
+(<https://nominatim.openstreetmap.org/search>). No necesita clave de API, no suma
+ninguna dependencia al proyecto, y permite CORS, asi que la peticion sale directo
+desde el navegador.
+
+**Solo busca al enviar.** El boton "Ir" o Enter dispara la busqueda, nunca segun
+tecleas. Es a proposito: la politica de Nominatim pide como mucho una peticion por
+segundo, y buscar al enviar sale gratis en codigo comparado con montar un debounce
+o un apaño similar.
+
+Los resultados se sesgan hacia el trozo de mapa que estas viendo, pasando el
+"viewbox" de Leaflet al geocodificador. Como no se pone `bounded=1`, si el sitio
+esta fuera tambien lo encuentra: solo prioriza lo cercano.
+
+Cada resultado sale como una fila igual a las de Lugares, con la distancia a la
+que estas y los mismos dos botones: "Andar" y "Saltar". Son literalmente las mismas
+funciones, asi que "Saltar" dispara cooldown y pide la confirmacion de costumbre.
+
+Click en el nombre centra el mapa ahi sin mover el personaje ni crear ruta ninguna.
+El nombre que devuelve Nominatim es kilometrico, asi que en la fila se recortan los
+tres primeros trozos y el resto queda en el tooltip.
+
+Los resultados no se guardan en ningun sitio. Si quieres conservar uno, salta o anda
+hasta alli y guarda la posicion con "Guardar esta posicion" de la seccion Lugares.
+
 ## Lugares
 
 Sitios guardados con nombre, para no tener que buscarlos en el mapa cada vez.
@@ -513,7 +544,7 @@ sigues andando. Puedes recargarla a mitad de ruta y no se entera nadie.
 | `spoof.py` | El servidor. Lleva el movimiento, inyecta la posicion y sirve la web. Todo el estado vive aqui |
 | `test_spoof.py` | Los 9 tests del calculo de movimiento |
 | `run.sh` | Lo que arrancas. Levanta `spoof.py` con las dependencias que encuentre |
-| `index.html` | El mando: mapa, rosa de los vientos, rutas y lugares. No calcula movimiento, solo manda intenciones y pinta |
+| `index.html` | El mando: mapa, rosa de los vientos, rutas, lugares y buscador. No calcula movimiento, solo manda intenciones y pinta |
 | `emulator.sh` | Arranca el emulador con la configuracion que hace jugable al juego, y la repara si se perdio |
 | `avd/` | La definicion del emulador, por si lo borras |
 
