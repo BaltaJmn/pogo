@@ -1,8 +1,9 @@
 # pogo
 
-Joystick GPS y rutas para iPhone. Levanta una web local en el Mac y controla la
-ubicacion que reporta el movil: mando analogico, rutas que se recorren solas y
-velocidad configurable.
+Joystick GPS y rutas. Levanta una web local en el Mac y controla la ubicacion
+que reporta el dispositivo: mando analogico, rutas que se recorren solas y
+velocidad configurable. Sirve para un iPhone por wifi o para un emulador de
+Android.
 
 Sin jailbreak, sin cable, sin app modificada. Va sobre el servicio de
 desarrollador de iOS (DVT), el mismo que usa Xcode para simular ubicacion.
@@ -89,6 +90,17 @@ dispositivo Apple en la red; con uno solo, `run.sh` lo encuentra igual.
 ```
 
 Luego abre <http://127.0.0.1:8765>
+
+Contra un emulador de Android, con el emulador ya arrancado:
+
+```sh
+./run.sh --android
+```
+
+Con varios dispositivos en `adb devices`, pasa el serial: `./run.sh --android
+emulator-5554`. No hace falta ni root ni app de mock location: `adb emu geo fix`
+alimenta el GPS emulado, que para el sistema es el de verdad. La misma web y los
+mismos controles.
 
 Eso es todo. `run.sh` abre el tunel, monta la DeveloperDiskImage si hace falta y
 levanta la web. Deja la terminal abierta: si cierras el proceso se cae el tunel.
@@ -285,6 +297,25 @@ Son los presets de Debug > Simulate Location de Xcode. Es el mismo feature con
 otro transporte, CoreDevice en vez de DTX, asi que la posicion sale marcada
 igual. `devicectl` de Xcode ni siquiera expone el subcomando. No hay un tercer
 canal de ubicacion en iOS.
+
+**Android, emulador: funciona.** Backend nuevo en `spoof.py`, opcion `--android`,
+que sustituye la inyeccion de pymobiledevice3 por `adb emu geo fix`. La web, las
+rutas, el joystick y la persistencia se reutilizan tal cual. Comprobado sirviendo
+37.8859, -4.7658 desde la web y leyendo el sistema:
+
+```
+last location=Location[gps 37.885898,-4.765798 hAcc=5.0 ...]
+last location=Location[fused 37.885898,-4.765798 ...]
+```
+
+Proveedor `gps` y `fused`, sin marca de mock, porque no es un mock provider: es el
+GPS emulado. Ojo, `adb emu geo fix` pide **longitud primero**, hay un test en
+`test_spoof.py` para eso.
+
+Esto no sirve para jugar: Pokemon GO no arranca en un emulador, lo tumba Play
+Integrity. El emulador es el banco de pruebas. Para jugar haria falta movil
+Android real, y ahi la inyeccion por `adb` marca la posicion con `isMock`, que es
+justo lo que Niantic mira. Sin root, mismo muro que en iOS.
 
 **Conclusion.** iOS cerrado. Los dos unicos canales de ubicacion del sistema son
 el mismo feature de Xcode, y ese feature va marcado. Lo que queda esta todo fuera
