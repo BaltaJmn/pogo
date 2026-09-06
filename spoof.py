@@ -154,8 +154,10 @@ async def index(request):
 
 
 async def pos(request):
+    # `idx` es por donde va la ruta. La web lo necesita para saber si "Recorrer"
+    # empieza de cero o reanuda una pausa.
     return JSONResponse({"lat": SIM["lat"], "lon": SIM["lon"], "dist": SIM["dist"],
-                         "walking": SIM["walking"]})
+                         "walking": SIM["walking"], "idx": SIM["idx"]})
 
 
 def valid(lat, lon) -> bool:

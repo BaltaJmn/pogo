@@ -287,7 +287,8 @@
     <label class="check"><input type="checkbox" id="jitter" checked> Ruido GPS +-3 m</label>
     <div class="hint" style="margin-top:6px">
       Arrastra la aguja, o usa <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>.
-      Click en el mapa para elegir que hacer con ese punto.
+      <kbd>espacio</kbd> pausa la ruta. Click en el mapa para elegir que hacer
+      con ese punto.
     </div>
     <button id="stopSim" class="link" style="margin-top:8px">Devolver GPS real</button>
   </div>
@@ -312,6 +313,7 @@ let home = null;                        // punto de partida real, solo en localS
 let follow = false;                     // si el mapa persigue al marcador
 let places = [];                        // lugares guardados, solo en localStorage
 let navTarget = null;                   // hacia donde vamos andando, si vamos
+let routeIdx = 0;                       // por que punto de la ruta va el servidor
 let coolUntil = 0;                      // fin del cooldown, epoch ms
 const keys = new Set();
 
@@ -374,11 +376,13 @@ setInterval(async () => {
     pos = { lat: s.lat, lon: s.lon };
     paint();
     el('distOut').textContent = (s.dist / 1000).toFixed(2);
+    routeIdx = s.idx || 0;
     if (walking !== s.walking) {         // la ruta puede acabarse sola
       walking = s.walking;
       setWalking(walking);
       if (!walking && navTarget) { setStatus('has llegado'); clearNav(); }
     }
+    showRoute();
     drawVec(); updateNav(); updatePlaceDists();
   } catch (e) {
     setStatus('sin conexion con spoof.py', true);
@@ -477,7 +481,9 @@ function fromKeys() {
 }
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
-  if (!KEYMAP[k] || e.target.tagName === 'INPUT') return;
+  if (e.target.tagName === 'INPUT') return;
+  if (k === ' ' && route.length > 1) { e.preventDefault(); el('walk').click(); return; }
+  if (!KEYMAP[k]) return;
   e.preventDefault(); keys.add(k); fromKeys();
 });
 addEventListener('keyup', (e) => { keys.delete(e.key.toLowerCase()); fromKeys(); });
@@ -640,13 +646,21 @@ function drawRoute() {
   route.forEach((p, i) => L.circleMarker([p.lat, p.lon],
     { radius: 4, color: '#16233a', weight: 1.5, fillColor: '#fff', fillOpacity: 1 })
     .bindTooltip(String(i + 1)).addTo(pins));
-  el('ptsOut').textContent = route.length
-    ? route.length + (route.length === 1 ? ' punto' : ' puntos') : 'sin puntos';
+  showRoute();
+}
+
+// El boton dice lo que va a hacer: empezar, pausar o reanudar donde lo dejaste.
+function showRoute() {
+  el('walk').textContent = walking ? 'Pausar' : (routeIdx > 0 ? 'Reanudar' : 'Recorrer');
+  el('ptsOut').textContent = !route.length ? 'sin puntos'
+    : (walking || routeIdx > 0) ? 'punto ' + (routeIdx + 1) + ' de ' + route.length
+    : route.length + (route.length === 1 ? ' punto' : ' puntos');
 }
 
 // Recorriendo, la ruta se pinta en magenta: en un vistazo sabes si esta viva.
 function setWalking(on) {
   el('walk').classList.toggle('on', on);
+  showRoute();
   line.setStyle(on
     ? { color: '#c0176f', opacity: .9, dashArray: null }
     : { color: '#16233a', opacity: .55, dashArray: '5 5' });
@@ -656,13 +670,13 @@ el('walk').onclick = () => {
   if (route.length < 2) { setStatus('marca 2 puntos o mas', true); return; }
   walking = !walking;
   setWalking(walking);
-  const patch = { walking, route, endmode: endmode() };
+  const patch = { walking, endmode: endmode() };
   if (walking && !pos) { patch.lat = route[0].lat; patch.lon = route[0].lon; }
   send(patch);
 };
 el('undo').onclick = () => { route.pop(); drawRoute(); send({ route }); save(); };
 el('clearRoute').onclick = () => {
-  route = []; walking = false; setWalking(false); clearNav();
+  route = []; walking = false; routeIdx = 0; setWalking(false); clearNav();
   drawRoute(); send({ route, walking }); save();
 };
 el('stopSim').onclick = async () => {

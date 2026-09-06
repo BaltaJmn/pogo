@@ -259,6 +259,8 @@ Para usar otro AVD: `POGO_AVD=MiOtroAvd ./emulator.sh start`, o ponlo en `.env`.
 | Velocidad | Slider, o los presets Andar / Rapido / Bici |
 | Crear ruta | Marcar "Modo ruta" y hacer click en cada punto |
 | Recorrer ruta | Boton "Recorrer" |
+| Pausar a mitad de ruta | Boton "Pausar", o la tecla `espacio` |
+| Seguir donde lo dejaste | Boton "Reanudar", o `espacio` otra vez |
 | Fin de ruta | Bucle, Ida y vuelta, o Parar |
 | Guardar un lugar | Click en el mapa, "Guardar", y le pones nombre |
 | Guardar donde estas | Boton "Guardar esta posicion" |
@@ -279,6 +281,11 @@ perseguimiento cuando lo quieras.
 tres cosas que puedes querer hacer con ese punto: ir andando, saltar, o
 guardarlo con nombre. Saltar tiene cooldown y casi nunca es lo que quieres, asi
 que ya no es lo que pasa por defecto.
+
+**La ruta se puede pausar.** Si ves un gimnasio o una parada que quieres, dale a
+"Pausar" (o a `espacio`) y te quedas quieto donde estes, sin perder por donde
+ibas. "Reanudar" sigue desde ese mismo punto, no desde el principio. La etiqueta
+de la seccion Ruta te dice por donde vas: "punto 3 de 7".
 
 La rosa de los vientos marca el rumbo, no es solo un mando. Andando a mano lo
 saca del joystick; recorriendo una ruta, de la diferencia entre posiciones, que
@@ -424,11 +431,11 @@ sigues andando. Puedes recargarla a mitad de ruta y no se entera nadie.
 | Fichero | Que hace |
 |---|---|
 | `spoof.py` | El servidor. Lleva el movimiento, inyecta la posicion y sirve la web. Todo el estado vive aqui |
+| `test_spoof.py` | Los 9 tests del calculo de movimiento |
 | `run.sh` | Lo que arrancas. Levanta `spoof.py` con las dependencias que encuentre |
 | `index.html` | El mando: mapa, rosa de los vientos, rutas y lugares. No calcula movimiento, solo manda intenciones y pinta |
 | `emulator.sh` | Arranca el emulador con la configuracion que hace jugable al juego, y la repara si se perdio |
 | `avd/` | La definicion del emulador, por si lo borras |
-| `test_spoof.py` | Los 8 tests del calculo de movimiento |
 
 ### Lo que no sale de tu Mac
 

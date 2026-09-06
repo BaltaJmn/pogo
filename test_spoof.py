@@ -67,6 +67,26 @@ def test_ruta_degenerada_no_cuelga():
     assert SIM["walking"]
 
 
+def test_pausa_y_reanuda_desde_donde_iba():
+    """Pausar es dejar de andar sin tocar `idx`. Si al reanudar se reenviara la
+    ruta, el servidor lo pondria a 0 y te devolveria al primer punto."""
+    a = {"lat": 37.885835, "lon": -4.765513}
+    b = {"lat": 37.885835 + 20 / spoof.M, "lon": -4.765513}   # 20 m al norte
+    c = {"lat": 37.885835 + 40 / spoof.M, "lon": -4.765513}
+    reset(route=[a, b, c], walking=True, idx=1, endmode="once")
+    advance(5.0)
+    lat_pausa, idx_pausa = SIM["lat"], SIM["idx"]
+
+    SIM["walking"] = False                   # pausa
+    assert step() is False, "en pausa no se reinyecta"
+    assert SIM["lat"] == lat_pausa, "en pausa no se mueve"
+
+    SIM["walking"] = True                    # reanudar, sin tocar la ruta
+    advance(5.0)
+    assert SIM["idx"] == idx_pausa, "reanudar no puede cambiar de tramo"
+    assert SIM["lat"] > lat_pausa, "sigue hacia el norte, no vuelve al punto 0"
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):
