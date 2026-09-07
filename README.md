@@ -369,6 +369,13 @@ garantia de servicio. Si falla, la ruta se queda como estaba y el estado lo dice
 el boton "Pausar" te deja quieto sin perder por donde ibas, luego ajusta y sigue
 de ahi.
 
+La peticion a Valhalla vive ahora en una sola funcion que usan tanto el boton
+"Por calles" como el botón "Andar" a un sitio. Los numeros de los puntos de ruta
+(salida, 1, 2, ..., final) solo salen si la ruta tiene doce puntos o menos. Una
+ruta por calles trae cientos de vertices de geometria y numerarlos tapaba el mapa:
+en esas se dibujan solo "salida" y "final". En las rutas que marcas tu a mano los
+numeros siguen igual.
+
 ### Etiqueta de la ruta
 
 La etiqueta debajo del boton "Recorrer" ahora dice lo que mide. Por ejemplo:
@@ -486,9 +493,27 @@ Para guardar uno: click en el mapa, "Guardar", y le pones nombre. O el boton
 Cada lugar de la lista tiene dos botones, y la diferencia importa:
 
 - **Andar**: te pone a caminar hacia alli a la velocidad que tengas puesta, y
-  para al llegar. Por dentro es una ruta de dos puntos con "Parar" al final, o
-  sea que reemplaza la ruta que tuvieras dibujada. Mientras vas, debajo de las
-  coordenadas te dice cuanto falta y cuanto tarda.
+  para al llegar. Reemplaza la ruta que tuvieras dibujada. Mientras vas, debajo
+  de las coordenadas te dice cuanto falta y cuanto tarda.
+  
+  No traza una recta entre donde estas y el destino. Pasa los dos puntos por
+  Valhalla, el enrutador de OpenStreetMap, con perfil "pedestrian", y anda la
+  linea completa calle a calle. Una recta perfecta que cruza manzanas, rios y
+  edificios no la anda ningun peaton: de todo lo que puede delatar a un cliente
+  falseado, la forma del recorrido es lo unico que se arregla desde la web.
+  
+  En una prueba real en Cordoba: un trayecto de 1.359 metros en linea recta sale
+  1.645 metros por calles, o sea 1,21 veces mas, con 88 puntos, y el enrutador
+  tardo 288 milisegundos. Si el enrutador no contesta, se anda la recta de
+  siempre y el estado lo dice: "en linea recta, el enrutador no contesta".
+  Quedarse quieto seria peor.
+  
+  El "faltan X, unos Y andando" ahora se calcula sumando lo que queda de ruta
+  desde el punto al que va el servidor, no en linea recta. Antes se quedaba
+  corto justo cuando mas se miraba.
+  
+  Si pulsas Andar a un sitio y luego a otro antes de que termine de trazar,
+  gana el segundo. Un contador de peticion descarta la respuesta que ya no vale.
 - **Saltar**: teletransporte. Instantaneo, pero **dispara cooldown**, asi que
   pide confirmacion antes (ver [Confirmacion de saltos](#confirmacion-de-saltos)).
 
@@ -653,7 +678,7 @@ sigues andando. Puedes recargarla a mitad de ruta y no se entera nadie.
 | `spoof.py` | El servidor. Lleva el movimiento, inyecta la posicion y sirve la web. Todo el estado vive aqui |
 | `test_spoof.py` | Los 9 tests del calculo de movimiento |
 | `run.sh` | Lo que arrancas. Levanta `spoof.py` con las dependencias que encuentre |
-| `index.html` | El mando: mapa con radio de 40 m, rosa de los vientos, rutas (con boton "Por calles"), lugares, buscador de Nominatim, coordenadas pegadas y candidatos de Overpass. No calcula movimiento, solo manda intenciones y pinta |
+| `index.html` | El mando: mapa con radio de 40 m, rosa de los vientos, rutas (con boton "Por calles" y "Andar" a sitio), lugares, buscador de Nominatim, coordenadas pegadas y candidatos de Overpass. No calcula movimiento, solo manda intenciones y pinta |
 | `emulator.sh` | Arranca el emulador con la configuracion que hace jugable al juego, y la repara si se perdio |
 | `avd/` | La definicion del emulador, por si lo borras |
 
