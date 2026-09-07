@@ -442,10 +442,10 @@ let prev = null;                        // posicion anterior, para el rumbo en m
 let vec = { x: 0, y: 0 };               // joystick normalizado, x=este y=norte
 let route = [];                         // waypoints
 let walking = false;
-let home = null;                        // punto de partida real, solo en localStorage
+let home = null;                        // punto de partida real, guardado en el servidor
 let follow = false;                     // si el mapa persigue al marcador
-let places = [];                        // lugares guardados, solo en localStorage
-let routes = [];                        // rutas guardadas, solo en localStorage
+let places = [];                        // lugares guardados, en el servidor
+let routes = [];                        // rutas guardadas, en el servidor
 let navTarget = null;                   // hacia donde vamos andando, si vamos
 let routeIdx = 0;                       // por que punto de la ruta va el servidor
 let centered = false;                   // si ya encuadramos el mapa alguna vez
@@ -1315,12 +1315,30 @@ emuPoll();
 setInterval(emuPoll, 3000);
 
 // --- persistencia ------------------------------------------------------
-const save = () => localStorage.setItem('joystick',
-  JSON.stringify({ route, kmh: el('kmh').value, pos, home, follow, places, routes,
-                   coolUntil, goal, goalDone, lastDist }));
-(function load() {
+// Vive en spoof.py, no en el navegador. Con el overlay dentro del emulador hay
+// dos clientes mirando lo mismo, y ademas vaciar el navegador ya no te borra
+// las rutas. `follow` era preferencia de pestaña, pero por una sola cosa no
+// merece la pena mantener dos sitios donde guardar.
+const save = () => fetch('/data', {
+  method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ route, kmh: el('kmh').value, pos, home, follow, places, routes,
+                         coolUntil, goal, goalDone, lastDist })
+})  // fetch no rechaza con un 4xx, asi que un guardado rechazado hay que mirarlo
+  .then((r) => { if (!r.ok) setStatus('no se pudo guardar: ' + r.status, true); })
+  .catch(() => setStatus('no se pudo guardar, sin conexion', true));
+
+(async function load() {
+  let s = {};
   try {
-    const s = JSON.parse(localStorage.getItem('joystick') || '{}');
+    s = await fetch('/data').then((r) => r.json());
+    // Lo que tuvieras en el navegador de antes sube la primera vez. Borrarle los
+    // lugares a alguien por cambiar donde se guardan no es una opcion.
+    if (!Object.keys(s).length) {
+      const viejo = localStorage.getItem('joystick');
+      if (viejo) { s = JSON.parse(viejo); setStatus('lugares y rutas migrados al servidor'); }
+    }
+  } catch (e) { setStatus('sin conexion con spoof.py', true); }
+  try {
     if (s.route) { route = s.route; }
     setKmh(s.kmh || el('kmh').value);
     follow = !!s.follow;
@@ -1351,6 +1369,7 @@ const save = () => localStorage.setItem('joystick',
       centered = true;
     }
     send(patch);
+    save();                              // deja migrado lo que venia del navegador
   } catch (e) { drawRoute(); renderPlaces(); renderRoutes(); showHome(); }
 })();
 </script>
