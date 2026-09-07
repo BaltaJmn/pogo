@@ -297,7 +297,8 @@ saca del joystick; recorriendo una ruta, de la diferencia entre posiciones, que
 es cuando de verdad te interesa mirarla.
 
 La ruta actual, la velocidad, los lugares, las rutas guardadas y el objetivo de
-distancia viven en el navegador. Siguen ahi al reabrir.
+distancia se guardan en `data.json`, un fichero que `spoof.py` deja a su lado.
+Siguen ahi al reabrir.
 
 Manda una coordenada por segundo, como un GPS real, con +-3 metros de ruido para
 que la traza no salga en linea geometrica perfecta.
@@ -324,7 +325,7 @@ Detalles que importan:
   vez de leerlo tal cual. Un salto no te borra el huevo, igual que no te lo
   borra el juego.
 - **Sobrevive a cerrar el navegador.** Incubar un huevo de 10 km lleva dias, no
-  una sesion. Vive en el `localStorage`.
+  una sesion. Se guarda en `data.json` en el servidor.
 - **Por encima de 10.5 km/h se para**, y te dice que esta parado. Ver
   [Velocidad](#velocidad).
 - **"Poner el contador a cero"** cuando eclosione, para el siguiente.
@@ -494,8 +495,11 @@ Cada lugar de la lista tiene dos botones, y la diferencia importa:
 
 Click en el nombre centra el mapa ahi sin mover nada.
 
-Los lugares viven en el `localStorage` del navegador, igual que casa y que las
-rutas guardadas. **No se guardan en el repo ni se mandan a ningun sitio.**
+Los lugares, la casa y las rutas guardadas se guardan en `data.json` en el
+servidor local, nunca salen del ordenador. El archivo va al `.gitignore` y
+**no se sube al repo**. La web carga los datos automaticamente al arrancar:
+si el servidor esta vacio y el navegador tiene datos de antes, se migran solos
+en el primer arranque.
 
 ## Punto de partida (casa)
 
@@ -509,9 +513,10 @@ Una sola vez:
 2. Haz click encima, con "Modo ruta" desactivado, y pulsa "Saltar".
 3. Pulsa "Fijar casa en esta posicion", en la seccion Casa.
 
-Se guarda en el `localStorage` del navegador. **No se guarda en el repo ni se
-manda a ningun servidor**: tu direccion no sale de tu Mac. Si borras los datos
-del navegador hay que volver a fijarla.
+Se guarda en `data.json` en el servidor local. **No se sube al repo ni sale de
+tu ordenador**: el servidor solo escucha en 127.0.0.1, tu direccion no sale del
+Mac. La migracion es automatica: si el servidor esta vacio y el navegador tiene
+datos de antes, suben solos en el primer arranque.
 
 Hay dos formas de volver:
 
@@ -646,23 +651,58 @@ tirones o directamente parabas al cambiar de ventana.
 Con el bucle en `spoof.py` la pagina es un mando y un espejo: si la cierras,
 sigues andando. Puedes recargarla a mitad de ruta y no se entera nadie.
 
+### Guardado en el servidor
+
+Los lugares, rutas, casa, objetivo de distancia y cooldown se guardan en
+`data.json`. Vivian en el `localStorage` del navegador: vaciar el navegador
+borraba las rutas guardadas, y ningun otro cliente podia verlas (importa para
+el overlay flotante dentro del emulador, que es otro cliente). Ahora son datos
+compartidos.
+
+El servidor expone dos endpoints:
+
+- `GET /data`: devuelve el objeto entero. Si el fichero no existe devuelve `{}`.
+- `POST /data`: reemplaza todo el contenido.
+
+El servidor **no valida lo que hay dentro**, es un cajon compartido y el cliente
+es el dueño del formato. Solo comprueba dos cosas: que sea un objeto JSON valido
+y que no pase de 1 MB. La escritura va a un fichero temporal y luego `os.replace`,
+para que un corte a media escritura no te deje sin tus lugares.
+
+`data.json` lleva tu casa (tu direccion real). Va al `.gitignore`, no se sube al
+repo. El servidor solo escucha en 127.0.0.1: no sale de tu ordenador.
+
+**Migracion automatica:** si el servidor esta vacio y el navegador tiene datos
+de antes (localStorage de una sesion anterior), suben solos en el primer arranque
+de la web. El estado lo dice: "lugares y rutas migrados al servidor". No hay que
+hacer nada, ni se pierden.
+
+### Dos arreglos que salieron probandolo
+
+- **`index.html` se servia cacheable,** asi que editarlo no se veia hasta
+  recargar a la fuerza. Ahora va con `Cache-Control: no-store`. Es una
+  herramienta local y no hay ancho de banda que ahorrar.
+- **El guardado se tragaba los errores en silencio,** porque `fetch` no rechaza
+  con un 4xx. Un guardado rechazado ahora se ve en la linea de estado.
+
 ### Las piezas
 
 | Fichero | Que hace |
 |---|---|
-| `spoof.py` | El servidor. Lleva el movimiento, inyecta la posicion y sirve la web. Todo el estado vive aqui |
+| `spoof.py` | El servidor. Lleva el movimiento, inyecta la posicion y sirve la web. Guarda lugares, rutas, casa, etc. en `data.json` |
 | `test_spoof.py` | Los 9 tests del calculo de movimiento |
 | `run.sh` | Lo que arrancas. Levanta `spoof.py` con las dependencias que encuentre |
 | `index.html` | El mando: mapa con radio de 40 m, rosa de los vientos, rutas (con boton "Por calles"), lugares, buscador de Nominatim, coordenadas pegadas y candidatos de Overpass. No calcula movimiento, solo manda intenciones y pinta |
 | `emulator.sh` | Arranca el emulador con la configuracion que hace jugable al juego, y la repara si se perdio |
+| `data.json` | Archivo que guarda lugares, rutas guardadas, casa, objetivo de distancia y cooldown. Generado por `spoof.py`. Va en `.gitignore` |
 | `avd/` | La definicion del emulador, por si lo borras |
 
 ### Lo que no sale de tu Mac
 
 Casa, los lugares, las rutas guardadas, la ruta actual y el objetivo de
-distancia viven en el `localStorage` del navegador.
-No se commitean, no se mandan a ningun servidor y no se buscan en ningun
-geocodificador.
+distancia se guardan en `data.json`, un fichero que `spoof.py` deja a su lado.
+No se commitean al repo (va en `.gitignore`), no salen del ordenador. El servidor
+solo escucha en 127.0.0.1. Incluyen tu casa: tu direccion real no sale de tu Mac.
 
 Este repo es publico. Esa es justo la razon.
 
