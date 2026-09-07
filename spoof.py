@@ -10,9 +10,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import math
-import os
 import random
 import shutil
 from pathlib import Path
@@ -23,11 +21,6 @@ from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
 
 HERE = Path(__file__).resolve().parent
-# Tus lugares, tus rutas y tu casa. Antes vivian en el localStorage del
-# navegador: se perdian al vaciarlo y ningun otro cliente los veia. Con el
-# overlay dentro del emulador hay dos clientes, asi que el sitio es este.
-# Lleva tu direccion real, o sea que va al .gitignore.
-DATA_FILE = HERE / "data.json"
 ADB = shutil.which("adb") or str(Path.home() / "Library/Android/sdk/platform-tools/adb")
 M = 111320.0  # metros por grado de latitud
 SIM = {
@@ -73,21 +66,6 @@ class AdbEmulator:
 
 def shift(lat: float, lon: float, east: float, north: float) -> tuple[float, float]:
     return lat + north / M, lon + east / (M * math.cos(math.radians(lat)))
-
-
-def read_data() -> dict:
-    try:
-        return json.loads(DATA_FILE.read_text())
-    except (OSError, ValueError):
-        return {}
-
-
-def write_data(d: dict) -> None:
-    """Escribe entero o no escribe: un corte a media escritura no puede dejarte
-    sin los lugares guardados."""
-    tmp = DATA_FILE.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(d, indent=1))
-    os.replace(tmp, DATA_FILE)
 
 
 def meters(alat: float, alon: float, blat: float, blon: float) -> float:
@@ -172,10 +150,7 @@ async def ticker() -> None:
 
 
 async def index(request):
-    # Sin esto el navegador se queda con la copia vieja y editar index.html no
-    # se ve hasta un recargado forzado. Es una herramienta local: no hay ningun
-    # ancho de banda que ahorrar cacheando.
-    return FileResponse(HERE / "index.html", headers={"Cache-Control": "no-store"})
+    return FileResponse(HERE / "index.html")
 
 
 async def pos(request):
@@ -210,29 +185,6 @@ async def set_loc(request):
             SIM[k] = body[k]
     if SIM["lat"] is not None:
         await inject()
-    return JSONResponse({"ok": True})
-
-
-# El servidor no mira lo que hay dentro: es un cajon compartido, el cliente es
-# el dueño del formato. Lo unico que vigila es que no crezca sin freno.
-LIMITE = 1 << 20
-
-
-async def get_data(request):
-    return JSONResponse(read_data())
-
-
-async def set_data(request):
-    crudo = await request.body()
-    if len(crudo) > LIMITE:
-        return JSONResponse({"ok": False, "error": "demasiado grande"}, status_code=413)
-    try:
-        d = json.loads(crudo)
-    except ValueError:
-        return JSONResponse({"ok": False, "error": "json invalido"}, status_code=400)
-    if not isinstance(d, dict):
-        return JSONResponse({"ok": False, "error": "se esperaba un objeto"}, status_code=400)
-    write_data(d)
     return JSONResponse({"ok": True})
 
 
@@ -297,8 +249,6 @@ app = Starlette(routes=[
     Route("/pos", pos),
     Route("/loc", set_loc, methods=["POST"]),
     Route("/clear", clear_loc, methods=["POST"]),
-    Route("/data", get_data),
-    Route("/data", set_data, methods=["POST"]),
     Route("/emulator", emu_status),
     Route("/emulator", emu_start, methods=["POST"]),
 ])
