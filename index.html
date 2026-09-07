@@ -709,12 +709,32 @@ function askWhat(p, name) {
 }
 
 // --- ir a un punto -----------------------------------------------------
-// Andar hacia un sitio es una ruta de dos puntos que para al llegar. El
-// servidor ya sabe recorrer rutas, no hace falta nada nuevo ahi.
-function walkTo(p) {
+// Andar hacia un sitio es una ruta que para al llegar. El servidor ya sabe
+// recorrer rutas, no hace falta nada nuevo ahi.
+//
+// Va por las calles, no en linea recta. Atravesar manzanas, rios y edificios en
+// diagonal perfecta no lo hace ningun peaton, y es lo unico de esa forma que se
+// arregla desde aqui. Si el enrutador no contesta se anda la recta, porque
+// quedarse quieto es peor.
+let walkSeq = 0;                        // cancela lo que se pidio y ya no vale
+
+async function walkTo(p) {
   if (!pos) { jumpTo(p); return; }
+  const mio = ++walkSeq;
   navTarget = p;
-  route = [{ lat: pos.lat, lon: pos.lon }, { lat: p.lat, lon: p.lon }];
+  const recta = [{ lat: pos.lat, lon: pos.lon }, { lat: p.lat, lon: p.lon }];
+  setStatus('trazando por calles...');
+  let trazada;
+  try {
+    trazada = await porCalles(recta);
+  } catch (err) {
+    trazada = recta;
+    setStatus('en linea recta, el enrutador no contesta: ' + err.message, true);
+  }
+  if (mio !== walkSeq) return;          // te lo pensaste mejor mientras trazaba
+  if (trazada !== recta) setStatus('por calles: ' + km(routeMeters(trazada)));
+  route = trazada;
+  routeIdx = 0;
   drawRoute();
   document.querySelector('input[name=endmode][value=once]').checked = true;
   document.querySelectorAll('input[name=endmode]').forEach((o) =>
@@ -772,9 +792,19 @@ function doJump(p) {
 
 function clearNav() { navTarget = null; el('navOut').classList.add('hide'); }
 
+// Lo que queda ANDANDO, no en linea recta. Yendo por calles la recta se queda
+// corta y el "faltan" mentiria justo cuando mas se mira. `routeIdx` es el punto
+// al que el servidor se dirige ahora mismo.
+function metersLeft() {
+  if (routeIdx >= route.length) return metersBetween(pos, navTarget);
+  let m = metersBetween(pos, route[routeIdx]);
+  for (let i = routeIdx + 1; i < route.length; i++) m += metersBetween(route[i - 1], route[i]);
+  return m;
+}
+
 function updateNav() {
   if (!navTarget || !pos || !walking) { el('navOut').classList.add('hide'); return; }
-  const left = metersBetween(pos, navTarget);
+  const left = metersLeft();
   const kmh = +el('kmh').value;
   el('navOut').textContent = 'faltan ' + km(left) + ' . ' + dur(left / (kmh * 1000 / 3600));
   el('navOut').classList.remove('hide');
@@ -1119,9 +1149,15 @@ el('findPoi').onclick = async () => {
 function drawRoute() {
   line.setLatLngs(route.map((p) => [p.lat, p.lon]));
   pins.clearLayers();
-  route.forEach((p, i) => L.circleMarker([p.lat, p.lon],
-    { radius: 4, color: '#16233a', weight: 1.5, fillColor: '#fff', fillOpacity: 1 })
-    .bindTooltip(String(i + 1)).addTo(pins));
+  // Los numeros son para los puntos que marcas tu. Una ruta por calles trae
+  // cientos de vertices de geometria: numerarlos tapa el mapa y no dice nada.
+  const soloExtremos = route.length > 12;
+  route.forEach((p, i) => {
+    if (soloExtremos && i > 0 && i < route.length - 1) return;
+    L.circleMarker([p.lat, p.lon],
+      { radius: 4, color: '#16233a', weight: 1.5, fillColor: '#fff', fillOpacity: 1 })
+      .bindTooltip(soloExtremos ? (i ? 'final' : 'salida') : String(i + 1)).addTo(pins);
+  });
   showRoute();
 }
 
@@ -1185,27 +1221,32 @@ function decodePolyline6(str) {
   return pts;
 }
 
+// Pasa una lista de puntos por Valhalla y devuelve la linea calle a calle.
+// Lanza si no se puede: quien llama decide si se planta o tira de la recta.
+async function porCalles(puntos) {
+  const peticion = {
+    locations: puntos.map((p) => ({ lat: p.lat, lon: p.lon, type: 'break' })),
+    costing: 'pedestrian',
+  };
+  const r = await fetch('https://valhalla1.openstreetmap.de/route?json='
+    + encodeURIComponent(JSON.stringify(peticion)));
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const legs = (await r.json()).trip?.legs || [];
+  if (!legs.length) throw new Error('sin ruta a pie entre esos puntos');
+  // Cada tramo repite el punto donde empalma con el siguiente.
+  return legs.flatMap((l, i) => {
+    const pts = decodePolyline6(l.shape);
+    return i ? pts.slice(1) : pts;
+  });
+}
+
 el('snap').onclick = async () => {
   if (route.length < 2) { setStatus('marca 2 puntos o mas', true); return; }
   if (walking) { setStatus('para la ruta antes de ajustarla', true); return; }
   const antes = routeMeters(route);
-  const peticion = {
-    locations: route.map((p) => ({ lat: p.lat, lon: p.lon, type: 'break' })),
-    costing: 'pedestrian',
-  };
   setStatus('ajustando a las calles...');
   try {
-    const r = await fetch('https://valhalla1.openstreetmap.de/route?json='
-      + encodeURIComponent(JSON.stringify(peticion)));
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const legs = (await r.json()).trip?.legs || [];
-    if (!legs.length) throw new Error('sin ruta a pie entre esos puntos');
-    // Cada tramo repite el punto donde empalma con el siguiente.
-    const linea = legs.flatMap((l, i) => {
-      const pts = decodePolyline6(l.shape);
-      return i ? pts.slice(1) : pts;
-    });
-    route = linea;
+    route = await porCalles(route);
     routeIdx = 0;
     drawRoute(); send({ route }); save();
     setStatus('por calles: ' + km(routeMeters(route)) + ', antes ' + km(antes));
