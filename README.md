@@ -1161,18 +1161,20 @@ pero fallo". Cambio en dos ficheros:
 
 - **`spoof.py`:** guardar `EMU["log"]` solo cuando el arranque falla, y solo con
   la ultima linea del output (la del `die`, que es donde esta la razon).
-- **`index.html`, funcion `emuPoll`:** pasar de tres estados a cinco. Ahora lee:
-  - `booted=yes`: Emulador arrancado y listo. Rota verde.
-  - `starting=true`: Emulador arrancando. Esconde el boton, dice "arrancando,
-    tarda un par de minutos".
-  - `running=yes` sin booted: Emulador a medio arrancar de una sesion anterior.
-    Dice "Emulador a medio arrancar. Espera, o ./emulator.sh stop" y esconde el
-    boton (pulsar no arrancase nada).
-  - `running` sin valor (vacío): No hay intento previo. Dice "Emulador apagado"
-    con boton listo.
-  - Si hay `log`: Fallo. Dice "No arranco: <log>" con el boton para reintentar.
+- **`index.html`, funcion `emuPoll`:** pasar de tres estados a cinco, en este
+  orden:
+  1. `booted=yes`: arrancado. Muestra tamano, ES 3.1 y icd. Sin boton.
+  2. `starting=true`: "arrancando, tarda un par de minutos". Sin boton.
+  3. `running=yes` sin `booted`: hay qemu vivo pero adb no contesta, o sigue
+     arrancando de un intento que no lanzamos nosotros, o se colgo. Dice
+     "Emulador a medio arrancar. Espera, o ./emulator.sh stop" y esconde el
+     boton, porque pulsarlo ahi no arranca nada: `emulator.sh start` moriria
+     con ese mismo mensaje.
+  4. Apagado con log: "No arranco: <motivo>", con boton para reintentar.
+  5. Apagado sin log: "Emulador apagado", con boton.
 
-**Verificacion:** renderizado de todos los estados en el navegador, inyectando
-respuestas falsas de `/emulator` (booted: yes, no, "", starting: true, false,
-etc). 9 tests de `test_spoof.py` pasan. Linter de JavaScript sobre el script
-inline de `index.html` pasa (`node --check`).
+**Verificacion:** los cinco estados renderizados en el navegador, sustituyendo
+`window.fetch` para inyectar respuestas falsas de `/emulator` y llamando a
+`emuPoll()`. Se comprobo texto y visibilidad del boton en cada uno. 9 tests de
+`test_spoof.py` pasan. `node --check` sobre el script inline de `index.html`
+pasa.
