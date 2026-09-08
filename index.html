@@ -1338,15 +1338,25 @@ async function emuPoll() {
   let text, offer = false;
   try {
     const s = await fetch('/emulator').then((r) => r.json());
-    const busy = s.starting === true;
+    // El servidor solo guarda log cuando el arranque falla, asi que esto o esta
+    // vacio o es el motivo.
+    const fallo = s.log && s.log.length ? s.log[s.log.length - 1].replace('[emulator] ', '') : '';
     if (s.booted === 'yes') {
       text = (s.gles === '196609' && s.icd === 'kosmickrisp')
         ? 'Emulador <b>' + s.size + '</b> . ES 3.1 . kosmickrisp'
         : 'Emulador mal: gles ' + s.gles + ', icd ' + s.icd + '. Reinicialo';
-    } else if (busy) {
-      text = s.log && s.log.length ? s.log[s.log.length - 1].replace('[emulator] ', '') : 'arrancando';
+    } else if (s.starting === true) {
+      text = 'arrancando, tarda un par de minutos';
+    } else if (s.running === 'yes') {
+      // Hay qemu vivo pero adb no contesta: o sigue arrancando de un intento que
+      // no lanzamos nosotros, o se colgo. Pulsar el boton aqui no arranca nada,
+      // asi que no lo ofrecemos y se dice que hacer.
+      text = 'Emulador a medio arrancar. Espera, o <code>./emulator.sh stop</code>';
     } else {
-      text = 'Emulador apagado'; offer = true;
+      // Decir por que no arranco. Sin esto un fallo se ve igual que un apagado y
+      // parece que el boton no hace nada.
+      text = fallo ? 'No arranco: ' + fallo : 'Emulador apagado';
+      offer = true;
     }
   } catch (e) { text = 'Sin conexion con spoof.py'; }
   el('emuOut').innerHTML = text;

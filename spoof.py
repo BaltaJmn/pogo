@@ -236,9 +236,13 @@ async def emu_start(request):
     async def job():
         EMU["log"] = ["arrancando..."]
         code, out = await emu_run("start")
-        EMU["log"] = [l for l in out.splitlines() if l.strip()] or ["sin salida"]
-        if code:
-            EMU["log"].append(f"fallo (codigo {code})")
+        # El log solo importa cuando falla. Mientras arranca nadie lo ve (esto no
+        # se asigna hasta que el script termina) y si sale bien el estado ya lo
+        # dice todo. Guardando solo el motivo del fallo, la web puede decir por
+        # que no arranco en vez de un "apagado" que parece que el boton no hace
+        # nada. La ultima linea es la del die, que es la que explica el porque.
+        lineas = [l.strip() for l in out.splitlines() if l.strip()]
+        EMU["log"] = (lineas[-1:] or ["sin salida"]) if code else []
 
     EMU["task"] = asyncio.create_task(job())
     return JSONResponse({"ok": True})
