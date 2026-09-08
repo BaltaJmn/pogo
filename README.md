@@ -1139,3 +1139,40 @@ $ADB shell "dumpsys SurfaceFlinger --latency '$NAME'"
 
 Ojo: si hay un modal encima el juego deja de repintar y no salen muestras. Hay
 que cerrarlo antes de medir.
+
+### 2026-09-08: el boton "Arrancar emulador" parecia no hacer nada si fallaba
+
+**Sintoma:** pulsar el boton "Arrancar emulador" en la web, si el emulador no
+arrancaba bien (por ejemplo, un qemu a medio arrancar de una sesion anterior),
+volvia a renderizar "Emulador apagado" con el boton listo otra vez. Era
+indistinguible de que el boton no hubiera hecho nada. El motivo del fallo
+existia en el servidor pero no se mostraba en la pagina.
+
+**Diagnostico:** cuando `emulator.sh start` falla y devuelve codigo 1, el estado
+pasa a `starting=false` y `booted` queda sin ser "yes". El servidor guardaba la
+ultima linea del output en `EMU["log"]` para explicar por que fallo, pero el
+codigo de `emuPoll` en la web solo miraba tres estados: `booted=yes` (bueno),
+`starting=true` (arrancando) y el resto (apagado). Con `starting=false` y
+`booted` vacio, emuPoll caia en el else y escribia "Emulador apagado", borrando
+cualquier traza de que el arranque habia sido intentado.
+
+**Arreglo:** hay que distinguir entre "nunca se intento arrancar" y "se intento
+pero fallo". Cambio en dos ficheros:
+
+- **`spoof.py`:** guardar `EMU["log"]` solo cuando el arranque falla, y solo con
+  la ultima linea del output (la del `die`, que es donde esta la razon).
+- **`index.html`, funcion `emuPoll`:** pasar de tres estados a cinco. Ahora lee:
+  - `booted=yes`: Emulador arrancado y listo. Rota verde.
+  - `starting=true`: Emulador arrancando. Esconde el boton, dice "arrancando,
+    tarda un par de minutos".
+  - `running=yes` sin booted: Emulador a medio arrancar de una sesion anterior.
+    Dice "Emulador a medio arrancar. Espera, o ./emulator.sh stop" y esconde el
+    boton (pulsar no arrancase nada).
+  - `running` sin valor (vacío): No hay intento previo. Dice "Emulador apagado"
+    con boton listo.
+  - Si hay `log`: Fallo. Dice "No arranco: <log>" con el boton para reintentar.
+
+**Verificacion:** renderizado de todos los estados en el navegador, inyectando
+respuestas falsas de `/emulator` (booted: yes, no, "", starting: true, false,
+etc). 9 tests de `test_spoof.py` pasan. Linter de JavaScript sobre el script
+inline de `index.html` pasa (`node --check`).
