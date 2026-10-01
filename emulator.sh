@@ -115,13 +115,28 @@ resize() {
   say "pantalla a ${WIDTH}x${HEIGHT} @ ${DENSITY}dpi"
 }
 
+# Cerrar el emulador (Android Studio sobre todo) deja a veces qemu vivo o los
+# .lock del AVD, y el siguiente arranque se niega: "ya hay uno abierto". Si no
+# esta arrancado, lo que quede es basura: se mata y se borran los locks.
+clean() {
+  p="$(pids)"
+  if [ -n "$p" ]; then
+    say "matando emulador colgado ($p)"
+    kill $p 2>/dev/null || true
+    sleep 3
+    p="$(pids)"
+    [ -z "$p" ] || kill -9 $p 2>/dev/null || true
+  fi
+  rm -f "$AVD_HOME/$AVD.avd/"*.lock
+}
+
 start() {
   if booted; then
     say "el emulador ya esta arrancado"
     resize
     return
   fi
-  [ -z "$(pids)" ] || die "hay un emulador a medio arrancar. Espera, o ./emulator.sh stop"
+  clean
   setup
   say "arrancando $AVD con -gpu swangle"
   # nohup + setsid para que sobreviva a quien lance el script (la web, p.ej.)
