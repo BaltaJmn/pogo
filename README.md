@@ -180,7 +180,9 @@ Si no esta arrancado, fuerzan el arranque: cerrar un emulador (sobre todo
 desde Android Studio) deja a veces qemu vivo o los `*.lock` del AVD
 (`multiinstance.lock`, `hardware-qemu.ini.lock`), y el siguiente arranque se
 negaba diciendo que ya habia uno abierto. Ahora `start` mata lo que quede de
-ese AVD y borra los locks antes de lanzar.
+ese AVD y borra los locks antes de lanzar. Por eso la web ya no esconde el
+boton en el estado "a medio arrancar" (entrada del 2026-09-08): pulsarlo fuerza
+el arranque.
 
 **No lo arranques desde el boton de play de Android Studio.** No pasa
 `-gpu swangle`, y sin eso el juego funciona y cuenta kilometros pero no dibuja

@@ -1349,9 +1349,9 @@ async function emuPoll() {
       text = 'arrancando, tarda un par de minutos';
     } else if (s.running === 'yes') {
       // Hay qemu vivo pero adb no contesta: o sigue arrancando de un intento que
-      // no lanzamos nosotros, o se colgo. Pulsar el boton aqui no arranca nada,
-      // asi que no lo ofrecemos y se dice que hacer.
-      text = 'Emulador a medio arrancar. Espera, o <code>./emulator.sh stop</code>';
+      // no lanzamos nosotros, o se colgo. El boton lo mata y arranca de cero.
+      text = 'Emulador colgado o a medio arrancar. Pulsa para forzar el arranque';
+      offer = true;
     } else {
       // Decir por que no arranco. Sin esto un fallo se ve igual que un apagado y
       // parece que el boton no hace nada.
