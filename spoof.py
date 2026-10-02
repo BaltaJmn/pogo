@@ -28,6 +28,7 @@ SIM = {
     "vx": 0.0, "vy": 0.0,          # joystick normalizado, x=este y=norte
     "kmh": 4.5, "jitter": True,
     "route": [], "idx": 0, "dir": 1, "endmode": "loop", "walking": False,
+    "fix": None,                   # ultimo (lat, lon) mandado al emulador, jitter incluido
 }
 # Claves que la web puede tocar. Lista blanca: el resto del estado es nuestro.
 INTENT = ("vx", "vy", "kmh", "jitter", "route", "endmode", "walking")
@@ -130,20 +131,37 @@ async def inject() -> None:
     lat, lon = SIM["lat"], SIM["lon"]
     if SIM["jitter"]:
         lat, lon = shift(lat, lon, random.uniform(-3, 3), random.uniform(-3, 3))
+    SIM["fix"] = (lat, lon)
     async with LOCK:
         await SIM["loc"].set(lat, lon)
+
+
+async def tick() -> None:
+    """Un segundo de GPS. Parado tambien se manda fix, el mismo de antes y sin
+    jitter nuevo, como un GPS de verdad quieto. Si no, un emulador que arranca
+    con el servidor ya en marcha se quedaria sin posicion (o en la de fabrica,
+    en California) hasta que te movieras."""
+    if step():
+        await inject()
+    elif SIM["fix"]:
+        async with LOCK:
+            await SIM["loc"].set(*SIM["fix"])
 
 
 async def ticker() -> None:
     """Un fix por segundo, la cadencia de un GPS real. Sigue corriendo aunque
     cierres el navegador."""
+    ultimo = None
     while True:
         await asyncio.sleep(1)
         try:
-            if step():
-                await inject()
+            await tick()
+            ultimo = None
         except Exception as e:  # una inyeccion fallida no puede matar el bucle
-            print(f"tick: {e}")
+            # Con el emulador apagado falla cada segundo: una linea, no mil.
+            if str(e) != ultimo:
+                print(f"tick: {e}")
+                ultimo = str(e)
 
 
 # --- web ---------------------------------------------------------------
@@ -189,7 +207,7 @@ async def set_loc(request):
 
 
 async def clear_loc(request):
-    SIM.update(lat=None, lon=None, vx=0.0, vy=0.0, walking=False, dist=0.0)
+    SIM.update(lat=None, lon=None, vx=0.0, vy=0.0, walking=False, dist=0.0, fix=None)
     async with LOCK:
         await SIM["loc"].clear()
     return JSONResponse({"ok": True})

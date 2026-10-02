@@ -1,5 +1,7 @@
 """Comprobaciones de lo unico que puede romperse en silencio: el orden lon/lat
 que pide `adb emu geo fix` y el motor de movimiento que ahora vive en el servidor."""
+import asyncio
+
 import spoof
 from spoof import SIM, AdbEmulator, advance, meters, step
 
@@ -85,6 +87,28 @@ def test_pausa_y_reanuda_desde_donde_iba():
     advance(5.0)
     assert SIM["idx"] == idx_pausa, "reanudar no puede cambiar de tramo"
     assert SIM["lat"] > lat_pausa, "sigue hacia el norte, no vuelve al punto 0"
+
+
+class Grabadora:
+    """Emulador de mentira: apunta los fix en vez de llamar a adb."""
+    def __init__(self):
+        self.fixes = []
+
+    async def set(self, lat, lon):
+        self.fixes.append((lat, lon))
+
+
+def test_parado_repite_el_ultimo_fix_sin_jitter_nuevo():
+    """Un emulador que arranca con el servidor ya en marcha tiene que recibir
+    posicion aunque no te muevas, y quieto no puede temblar."""
+    reset(jitter=True, loc=Grabadora(), fix=None)
+    asyncio.run(spoof.tick())
+    assert SIM["loc"].fixes == [], "sin fix previo no hay nada que repetir"
+    asyncio.run(spoof.inject())
+    asyncio.run(spoof.tick())
+    asyncio.run(spoof.tick())
+    a, b, c = SIM["loc"].fixes
+    assert a == b == c, "parado se repite el mismo punto"
 
 
 if __name__ == "__main__":

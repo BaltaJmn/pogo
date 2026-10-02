@@ -1369,7 +1369,7 @@ setInterval(emuPoll, 3000);
 const save = () => localStorage.setItem('joystick',
   JSON.stringify({ route, kmh: el('kmh').value, pos, home, follow, places, routes,
                    coolUntil, goal, goalDone, lastDist }));
-(function load() {
+(async function load() {
   try {
     const s = JSON.parse(localStorage.getItem('joystick') || '{}');
     if (s.route) { route = s.route; }
@@ -1389,7 +1389,17 @@ const save = () => localStorage.setItem('joystick',
     showHome();
     tickCool();
     document.querySelector('input[name=endmode]:checked').parentElement.classList.add('on');
-    // Arranca siempre en casa: asi el movil nunca abre en una posicion lejana.
+    // Si el servidor ya tiene posicion, la sesion sigue viva: has recargado la
+    // pestaña o has vuelto a lanzar `pogo`. Mandarle casa ahi seria
+    // teletransportarte y cortar la ruta a medias. Manda el servidor, y el
+    // sondeo pinta donde estas.
+    const srv = await fetch('/pos').then((r) => r.json()).catch(() => ({ lat: null }));
+    if (srv.lat !== null) {
+      pos = { lat: srv.lat, lon: srv.lon }; paint(); map.setView([pos.lat, pos.lon], 17);
+      centered = true;
+      return;
+    }
+    // Sesion nueva: arranca en casa, asi el movil nunca abre en una posicion lejana.
     const start = home || s.pos;
     const patch = { route, kmh: +el('kmh').value, jitter: el('jitter').checked,
                     endmode: endmode(), walking: false, vx: 0, vy: 0 };
