@@ -318,6 +318,7 @@
     <h1>Joystick GPS</h1>
     <div class="meta" id="emuOut">emulador: comprobando</div>
     <div class="row hide" id="emuRow"><button id="emuStart" class="ghost">Arrancar emulador</button></div>
+    <div class="row"><button id="clicker" class="ghost">Autoclicker de combate</button></div>
   </header>
 
   <div class="rose">
@@ -525,6 +526,7 @@ function paint() {
 setInterval(async () => {
   try {
     const s = await fetch('/pos').then((r) => r.json());
+    showClicker(s.clicker);              // antes del return: no depende de la posicion
     if (s.lat === null) return;
     prev = pos;
     pos = { lat: s.lat, lon: s.lon };
@@ -1364,6 +1366,20 @@ async function emuPoll() {
 }
 emuPoll();
 setInterval(emuPoll, 3000);
+
+// --- autoclicker -------------------------------------------------------
+// Lo lleva el servidor, como el movimiento: sigue tocando aunque el foco este en
+// el emulador. El sondeo de /pos pinta si sigue encendido (se para solo si el
+// emulador se cae).
+function showClicker(on) {
+  el('clicker').classList.toggle('on', on);
+  el('clicker').textContent = on ? 'Parar autoclicker' : 'Autoclicker de combate';
+}
+el('clicker').onclick = () => {
+  const on = !el('clicker').classList.contains('on');
+  showClicker(on);
+  fetch('/clicker', { method: 'POST', body: JSON.stringify({ on }) });
+};
 
 // --- persistencia ------------------------------------------------------
 const save = () => localStorage.setItem('joystick',

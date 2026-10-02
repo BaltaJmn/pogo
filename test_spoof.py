@@ -111,6 +111,28 @@ def test_parado_repite_el_ultimo_fix_sin_jitter_nuevo():
     assert a == b == c, "parado se repite el mismo punto"
 
 
+class Pantalla:
+    """adb shell de mentira: apunta los comandos y se apaga a las n llamadas,
+    que es como para el bucle infinito del autoclicker."""
+    def __init__(self, n):
+        self.cmds, self.n = [], n
+
+    async def shell(self, *cmd):
+        self.cmds.append(cmd)
+        if len(self.cmds) > self.n:
+            raise RuntimeError("emulador apagado")
+        return "Physical size: 1080x2400\nOverride size: 720x1600\n"
+
+
+def test_autoclicker_toca_el_centro_y_cada_tanto_mantiene():
+    SIM["loc"] = Pantalla(1 + spoof.TOQUES + 1)
+    asyncio.run(spoof.clicker())
+    wm, *toques, larga, _ = SIM["loc"].cmds
+    assert wm == ("wm", "size")
+    assert toques == [("input", "tap", "360", "800")] * spoof.TOQUES, "centro del override"
+    assert larga == ("input", "swipe", "360", "800", "360", "800", str(spoof.PULSACION_MS))
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

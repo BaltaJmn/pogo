@@ -284,6 +284,7 @@ Para usar otro AVD: `POGO_AVD=MiOtroAvd ./emulator.sh start`, o ponlo en `.env`.
 | Centrar el mapa | Boton "Centrar aqui" |
 | Que el mapa te siga | Boton "Seguir" (se queda activado) |
 | Arrancar el emulador | Boton "Arrancar emulador" |
+| Combatir sin spamear clicks | Boton "Autoclicker de combate" (otra vez para parar) |
 | Volver al GPS real | Boton "Devolver GPS real" |
 
 El mapa no persigue al marcador por defecto: si lo arrastras para mirar otra
@@ -309,6 +310,18 @@ distancia viven en el navegador. Siguen ahi al reabrir.
 
 Manda una coordenada por segundo, como un GPS real, con +-3 metros de ruido para
 que la traza no salga en linea geometrica perfecta.
+
+## Autoclicker de combate
+
+Para gimnasios e incursiones. Entra en el combate y dale a "Autoclicker de
+combate": toca el centro de la pantalla del emulador sin parar (ataque rapido) y
+cada 8 toques mantiene pulsado un segundo (suelta el ataque cargado si la barra
+esta llena). Al acabar el combate, "Parar autoclicker": si no, sigue tocando el
+centro del mapa y te abre el perfil.
+
+Lo lleva el servidor con `adb shell input`, asi que sigue aunque el foco este
+en el emulador. Si el emulador se apaga, se para solo. La pulsacion larga va a
+ciegas, sin mirar la barra; `TOQUES` y `PULSACION_MS` en `spoof.py` lo ajustan.
 
 ## Objetivo de distancia
 

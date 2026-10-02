@@ -45,18 +45,26 @@ class AdbEmulator:
     def __init__(self, serial: str) -> None:
         self.serial = serial
 
+    def adb(self, *args: str) -> list[str]:
+        return [ADB] + (["-s", self.serial] if self.serial else []) + list(args)
+
     def argv(self, lat: float, lon: float) -> list[str]:
         # geo fix quiere LONGITUD primero. Invertirlo te manda al otro lado del mundo.
-        prefix = [ADB] + (["-s", self.serial] if self.serial else [])
-        return prefix + ["emu", "geo", "fix", str(lon), str(lat)]
+        return self.adb("emu", "geo", "fix", str(lon), str(lat))
 
-    async def set(self, lat: float, lon: float) -> None:
+    async def run(self, *argv: str) -> str:
         proc = await asyncio.create_subprocess_exec(
-            *self.argv(lat, lon),
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+            *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
         out, _ = await proc.communicate()
         if proc.returncode:
             raise RuntimeError(out.decode().strip() or f"adb salio con {proc.returncode}")
+        return out.decode()
+
+    async def set(self, lat: float, lon: float) -> None:
+        await self.run(*self.argv(lat, lon))
+
+    async def shell(self, *cmd: str) -> str:
+        return await self.run(*self.adb("shell", *cmd))
 
     async def clear(self) -> None:
         pass  # el emulador no tiene GPS real al que volver
@@ -175,7 +183,8 @@ async def pos(request):
     # `idx` es por donde va la ruta. La web lo necesita para saber si "Recorrer"
     # empieza de cero o reanuda una pausa.
     return JSONResponse({"lat": SIM["lat"], "lon": SIM["lon"], "dist": SIM["dist"],
-                         "walking": SIM["walking"], "idx": SIM["idx"], "kmh": SIM["kmh"]})
+                         "walking": SIM["walking"], "idx": SIM["idx"], "kmh": SIM["kmh"],
+                         "clicker": clicking()})
 
 
 def valid(lat, lon) -> bool:
@@ -266,6 +275,48 @@ async def emu_start(request):
     return JSONResponse({"ok": True})
 
 
+# --- autoclicker -------------------------------------------------------
+# Combate de gimnasio o incursion: un toque en cualquier sitio es ataque rapido,
+# y mantener pulsado suelta el cargado si la barra esta llena. En el centro de la
+# pantalla no hay botones (huir esta arriba a la izquierda, cambiar de pokemon
+# abajo a la derecha), asi que se toca ahi.
+TOQUES = 8            # toques rapidos entre una pulsacion larga y la siguiente
+PULSACION_MS = 1000   # lo que se mantiene el dedo para soltar el cargado
+CLICK = {"task": None}
+
+
+def clicking() -> bool:
+    t = CLICK["task"]
+    return t is not None and not t.done()
+
+
+async def clicker() -> None:
+    """Cada toque espera al anterior: si adb va lento se toca menos, pero no se
+    encolan toques que seguirian cayendo despues de pararlo."""
+    # ponytail: la pulsacion larga va a ciegas, sin mirar si la barra esta llena.
+    # Si se pierde mucho ataque rapido, leer el color de la barra con screencap.
+    loc = SIM["loc"]
+    try:
+        # Con override (720x1600 en este AVD) la ultima linea es la que vale.
+        w, h = (await loc.shell("wm", "size")).split()[-1].split("x")
+        x, y = str(int(w) // 2), str(int(h) // 2)
+        while True:
+            for _ in range(TOQUES):
+                await loc.shell("input", "tap", x, y)
+            await loc.shell("input", "swipe", x, y, x, y, str(PULSACION_MS))
+    except Exception as e:  # emulador apagado: se para solo y la web lo ve
+        print(f"autoclicker: {e}")
+
+
+async def set_clicker(request):
+    on = bool((await request.json()).get("on"))
+    if on and not clicking():
+        CLICK["task"] = asyncio.create_task(clicker())
+    elif not on and clicking():
+        CLICK["task"].cancel()
+    return JSONResponse({"ok": True})
+
+
 app = Starlette(routes=[
     Route("/", index),
     Route("/pos", pos),
@@ -273,6 +324,7 @@ app = Starlette(routes=[
     Route("/clear", clear_loc, methods=["POST"]),
     Route("/emulator", emu_status),
     Route("/emulator", emu_start, methods=["POST"]),
+    Route("/clicker", set_clicker, methods=["POST"]),
 ])
 
 
